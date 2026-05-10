@@ -3,18 +3,18 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>GLYPH DUEL — Sprint 1</title>
+<title>GLYPH DUEL — Sprint 1-A2</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
   html, body { background: #000; height: 100vh; overflow: hidden; touch-action: none; font-family: 'SF Mono', Menlo, monospace; }
   body { display: flex; justify-content: center; align-items: center; }
-  canvas { display: block; touch-action: none; cursor: crosshair; image-rendering: auto; box-shadow: 0 0 80px rgba(0,255,255,0.15); }
+  canvas { display: block; touch-action: none; cursor: crosshair; box-shadow: 0 0 80px rgba(0,255,255,0.15); }
   .hint { position: fixed; bottom: 6px; left: 50%; transform: translateX(-50%); color: #244; font: 10px monospace; pointer-events: none; letter-spacing: 1px; }
 </style>
 </head>
 <body>
 <canvas id="game" width="960" height="640"></canvas>
-<div class="hint">DRAW WITH MOUSE OR FINGER · SPACE TO RESTART</div>
+<div class="hint">DRAW WITH MOUSE OR FINGER · TAB FOR GLYPH BOOK · SPACE TO RESTART</div>
 <script>
 'use strict';
 
@@ -28,179 +28,211 @@ function resize() {
   canvas.style.width = (960 * sc) + 'px';
   canvas.style.height = (640 * sc) + 'px';
 }
-resize();
-window.addEventListener('resize', resize);
+resize(); window.addEventListener('resize', resize);
 
 // ═══════════════════════════════════════════════════════════
-// $1 UNISTROKE RECOGNIZER (Wobbrock et al. 2007, simplified)
+// $1 UNISTROKE RECOGNIZER
 // ═══════════════════════════════════════════════════════════
-const N_RESAMPLE = 64;
-const SQ_SIZE = 250;
+const N_RESAMPLE = 64, SQ_SIZE = 250;
 const PHI = 0.5 * (-1 + Math.sqrt(5));
 const ANGLE_RANGE = 45 * (Math.PI / 180);
 const ANGLE_PRECISION = 2 * (Math.PI / 180);
 const HALF_DIAGONAL = 0.5 * Math.sqrt(SQ_SIZE * SQ_SIZE * 2);
-
-function pathLen(pts) {
-  let d = 0;
-  for (let i = 1; i < pts.length; i++) d += Math.hypot(pts[i].x - pts[i-1].x, pts[i].y - pts[i-1].y);
-  return d;
-}
-function pathDist(a, b) {
-  let d = 0;
-  for (let i = 0; i < a.length; i++) d += Math.hypot(a[i].x - b[i].x, a[i].y - b[i].y);
-  return d / a.length;
-}
-function centroid(pts) {
-  let x = 0, y = 0;
-  for (const p of pts) { x += p.x; y += p.y; }
-  return { x: x / pts.length, y: y / pts.length };
-}
+function pathLen(p) { let d = 0; for (let i = 1; i < p.length; i++) d += Math.hypot(p[i].x - p[i-1].x, p[i].y - p[i-1].y); return d; }
+function pathDist(a, b) { let d = 0; for (let i = 0; i < a.length; i++) d += Math.hypot(a[i].x - b[i].x, a[i].y - b[i].y); return d / a.length; }
+function centroid(p) { let x = 0, y = 0; for (const q of p) { x += q.x; y += q.y; } return { x: x / p.length, y: y / p.length }; }
 function resample(pts, n) {
   if (pts.length < 2) return pts.slice();
-  pts = pts.slice();
-  const I = pathLen(pts) / (n - 1);
-  let D = 0;
-  const out = [pts[0]];
+  pts = pts.slice(); const I = pathLen(pts) / (n - 1); let D = 0; const out = [pts[0]];
   for (let i = 1; i < pts.length; i++) {
     const d = Math.hypot(pts[i].x - pts[i-1].x, pts[i].y - pts[i-1].y);
     if (D + d >= I && d > 0) {
-      const t = (I - D) / d;
-      const q = { x: pts[i-1].x + t * (pts[i].x - pts[i-1].x), y: pts[i-1].y + t * (pts[i].y - pts[i-1].y) };
+      const t = (I - D) / d, q = { x: pts[i-1].x + t * (pts[i].x - pts[i-1].x), y: pts[i-1].y + t * (pts[i].y - pts[i-1].y) };
       out.push(q); pts.splice(i, 0, q); D = 0;
-    } else { D += d; }
+    } else D += d;
   }
-  while (out.length < n) out.push(pts[pts.length - 1]);
-  return out;
+  while (out.length < n) out.push(pts[pts.length - 1]); return out;
 }
-function rotateBy(pts, theta) {
-  const c = centroid(pts), cs = Math.cos(theta), sn = Math.sin(theta);
-  return pts.map(p => ({ x: (p.x - c.x) * cs - (p.y - c.y) * sn + c.x, y: (p.x - c.x) * sn + (p.y - c.y) * cs + c.y }));
-}
-function indicativeAngle(pts) { const c = centroid(pts); return Math.atan2(c.y - pts[0].y, c.x - pts[0].x); }
-function scaleTo(pts, size) {
-  let mnx = Infinity, mxx = -Infinity, mny = Infinity, mxy = -Infinity;
-  for (const p of pts) { if (p.x < mnx) mnx = p.x; if (p.x > mxx) mxx = p.x; if (p.y < mny) mny = p.y; if (p.y > mxy) mxy = p.y; }
-  const w = mxx - mnx || 1, h = mxy - mny || 1;
-  return pts.map(p => ({ x: p.x * size / w, y: p.y * size / h }));
-}
-function translateTo(pts, target) { const c = centroid(pts); return pts.map(p => ({ x: p.x + target.x - c.x, y: p.y + target.y - c.y })); }
-function distAtAngle(pts, T, theta) { return pathDist(rotateBy(pts, theta), T); }
-function distAtBestAngle(pts, T, a, b, thresh) {
-  let x1 = PHI * a + (1 - PHI) * b, f1 = distAtAngle(pts, T, x1);
-  let x2 = (1 - PHI) * a + PHI * b, f2 = distAtAngle(pts, T, x2);
-  while (Math.abs(b - a) > thresh) {
-    if (f1 < f2) { b = x2; x2 = x1; f2 = f1; x1 = PHI * a + (1 - PHI) * b; f1 = distAtAngle(pts, T, x1); }
-    else { a = x1; x1 = x2; f1 = f2; x2 = (1 - PHI) * a + PHI * b; f2 = distAtAngle(pts, T, x2); }
+function rotateBy(p, t) { const c = centroid(p), cs = Math.cos(t), sn = Math.sin(t); return p.map(q => ({ x: (q.x - c.x) * cs - (q.y - c.y) * sn + c.x, y: (q.x - c.x) * sn + (q.y - c.y) * cs + c.y })); }
+function indicativeAngle(p) { const c = centroid(p); return Math.atan2(c.y - p[0].y, c.x - p[0].x); }
+function scaleTo(p, s) { let mnx = Infinity, mxx = -Infinity, mny = Infinity, mxy = -Infinity; for (const q of p) { if (q.x < mnx) mnx = q.x; if (q.x > mxx) mxx = q.x; if (q.y < mny) mny = q.y; if (q.y > mxy) mxy = q.y; } const w = mxx - mnx || 1, h = mxy - mny || 1; return p.map(q => ({ x: q.x * s / w, y: q.y * s / h })); }
+function translateTo(p, t) { const c = centroid(p); return p.map(q => ({ x: q.x + t.x - c.x, y: q.y + t.y - c.y })); }
+function distAtAngle(p, T, t) { return pathDist(rotateBy(p, t), T); }
+function distAtBest(p, T, a, b, th) {
+  let x1 = PHI * a + (1 - PHI) * b, f1 = distAtAngle(p, T, x1);
+  let x2 = (1 - PHI) * a + PHI * b, f2 = distAtAngle(p, T, x2);
+  while (Math.abs(b - a) > th) {
+    if (f1 < f2) { b = x2; x2 = x1; f2 = f1; x1 = PHI * a + (1 - PHI) * b; f1 = distAtAngle(p, T, x1); }
+    else { a = x1; x1 = x2; f1 = f2; x2 = (1 - PHI) * a + PHI * b; f2 = distAtAngle(p, T, x2); }
   }
   return Math.min(f1, f2);
 }
-function preprocess(raw) {
-  let p = resample(raw, N_RESAMPLE);
-  p = rotateBy(p, -indicativeAngle(p));
-  p = scaleTo(p, SQ_SIZE);
-  p = translateTo(p, { x: 0, y: 0 });
-  return p;
-}
+function preprocess(raw) { let p = resample(raw, N_RESAMPLE); p = rotateBy(p, -indicativeAngle(p)); p = scaleTo(p, SQ_SIZE); p = translateTo(p, { x: 0, y: 0 }); return p; }
 const TEMPLATES = [];
-function registerTemplate(name, raw) { TEMPLATES.push({ name, points: preprocess(raw) }); }
+function reg(name, raw) { TEMPLATES.push({ name, points: preprocess(raw) }); }
 function recognize(raw) {
   if (raw.length < 5) return { name: null, score: 0 };
-  const cand = preprocess(raw);
-  let best = Infinity, bestName = null;
-  for (const t of TEMPLATES) {
-    const d = distAtBestAngle(cand, t.points, -ANGLE_RANGE, ANGLE_RANGE, ANGLE_PRECISION);
-    if (d < best) { best = d; bestName = t.name; }
-  }
-  return { name: bestName, score: Math.max(0, 1 - best / HALF_DIAGONAL) };
+  const c = preprocess(raw); let best = Infinity, n = null;
+  for (const t of TEMPLATES) { const d = distAtBest(c, t.points, -ANGLE_RANGE, ANGLE_RANGE, ANGLE_PRECISION); if (d < best) { best = d; n = t.name; } }
+  return { name: n, score: Math.max(0, 1 - best / HALF_DIAGONAL) };
 }
+function circ(cx, cy, r, n, dir) { const out = []; for (let i = 0; i <= n; i++) { const a = (i / n) * Math.PI * 2 * (dir || 1) - Math.PI / 2; out.push({ x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r }); } return out; }
 
 // ═══════════════════════════════════════════════════════════
-// GLYPH TEMPLATES (5 unistroke shapes)
+// 30 GLYPH TEMPLATES (unistroke; some are approximations of
+// multi-stroke spec shapes — see PHASE1_SPEC.md §3.3)
 // ═══════════════════════════════════════════════════════════
-function circlePts(cx, cy, r, n) {
-  const out = [];
-  for (let i = 0; i <= n; i++) { const a = (i / n) * Math.PI * 2 - Math.PI / 2; out.push({ x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r }); }
-  return out;
-}
-registerTemplate('bolt',     [{x:0,y:0},{x:60,y:40},{x:120,y:0},{x:180,y:60},{x:240,y:30},{x:300,y:90}]);
-registerTemplate('fireball', circlePts(100, 100, 80, 24));
-registerTemplate('barrier',  [{x:100,y:0},{x:0,y:200},{x:200,y:200},{x:100,y:0}]);
-registerTemplate('heal',     [{x:0,y:80},{x:35,y:130},{x:80,y:60},{x:200,y:0}]);
-registerTemplate('parry',    [{x:0,y:0},{x:200,y:0},{x:200,y:120},{x:0,y:120},{x:0,y:0}]);
+// ATTACK (10)
+reg('bolt',         [{x:0,y:0},{x:60,y:40},{x:120,y:0},{x:180,y:60},{x:240,y:30},{x:300,y:90}]);                    // zigzag
+reg('fireball',     circ(100, 100, 80, 24, 1));                                                                      // CW circle
+reg('icicle',       [{x:0,y:0},{x:60,y:120},{x:120,y:0}]);                                                           // V (sharp)
+reg('windblade',    [{x:0,y:60},{x:30,y:30},{x:80,y:0},{x:130,y:30},{x:160,y:60}]);                                  // crescent / shallow arc
+reg('beam',         [{x:0,y:0},{x:200,y:0},{x:200,y:30},{x:0,y:30}]);                                                // double-line (long horiz w/ short return)
+reg('gravorb',      (() => { const o = []; for (let i = 0; i <= 50; i++) { const a = i * 0.4, r = 80 - i * 1.4; o.push({ x: 100 + Math.cos(a) * Math.max(2, r), y: 100 + Math.sin(a) * Math.max(2, r) }); } return o; })()); // spiral
+reg('lightnet',     [{x:0,y:0},{x:80,y:0},{x:80,y:40},{x:0,y:40},{x:0,y:80},{x:80,y:80}]);                           // grid (square zigzag)
+reg('flame',        [{x:0,y:0},{x:50,y:20},{x:100,y:0},{x:150,y:30},{x:200,y:10},{x:250,y:40},{x:300,y:20},{x:350,y:50}]); // long wavy line (flame stream)
+reg('shadowstrike', [{x:0,y:0},{x:100,y:100},{x:50,y:30},{x:100,y:0},{x:0,y:100}]);                                  // X (single-stroke approx)
+reg('doubleburst',  [{x:0,y:100},{x:50,y:0},{x:100,y:100},{x:150,y:0},{x:200,y:100}]);                               // double-triangle peaks (M)
+
+// DEFENSE (8)
+reg('barrier',      [{x:100,y:0},{x:0,y:200},{x:200,y:200},{x:100,y:0}]);                                            // triangle (closed, point up)
+reg('reflect',      [{x:0,y:0},{x:200,y:0},{x:100,y:200},{x:0,y:0}]);                                                // inverted triangle (point down) — closed
+reg('heal',         [{x:0,y:80},{x:35,y:130},{x:80,y:60},{x:200,y:0}]);                                              // check
+reg('cleanse',      [{x:0,y:50},{x:40,y:0},{x:80,y:80},{x:120,y:0},{x:160,y:80},{x:200,y:0},{x:240,y:50}]);          // wave / sine
+reg('mirror',       (() => { const o = []; for (let i = 0; i <= 40; i++) { const a = (i / 40) * Math.PI * 2, r = 60 + Math.cos(a * 2) * 30; o.push({ x: 100 + Math.cos(a) * r, y: 100 + Math.sin(a) * r * 0.5 }); } return o; })()); // figure-8 (symmetric)
+reg('immortal',     [{x:100,y:0},{x:130,y:60},{x:200,y:80},{x:140,y:120},{x:170,y:200},{x:100,y:160},{x:30,y:200},{x:60,y:120},{x:0,y:80},{x:70,y:60},{x:100,y:0}]); // 5-point star (closed)
+reg('manadrain',    [{x:200,y:50},{x:0,y:50},{x:30,y:20},{x:0,y:50},{x:30,y:80}]);                                   // arrow (← shaped)
+reg('selfbuff',     [{x:100,y:0},{x:0,y:100},{x:200,y:100}]);                                                        // upright triangle (open) — caret-like
+
+// MOVEMENT (4)
+reg('teleport',     [{x:100,y:100},{x:101,y:101},{x:102,y:100},{x:101,y:99}]);                                       // dot (very small loop)
+reg('windrun',      [{x:0,y:50},{x:25,y:30},{x:50,y:70},{x:75,y:40}]);                                               // short wave
+reg('timeslow',     (() => { const o = []; for (let i = 0; i <= 24; i++) { const a = (i / 24) * Math.PI * 2 - Math.PI / 2; o.push({ x: 100 + Math.cos(a) * 60, y: 100 + Math.sin(a) * 60 }); } o.push({ x: 100, y: 100 }); o.push({ x: 160, y: 100 }); return o; })()); // clock (circle + hand)
+reg('shadowwalk',   [{x:0,y:0},{x:60,y:0},{x:0,y:60},{x:60,y:60}]);                                                  // narrow Z
+
+// TRAP / COMBO (4)
+reg('trapset',      [{x:0,y:0},{x:80,y:80},{x:0,y:80},{x:80,y:0}]);                                                  // X-mark (different from shadowstrike)
+reg('trigger',      [{x:0,y:0},{x:30,y:0}]);                                                                         // very short line
+reg('manazone',     [{x:100,y:0},{x:200,y:75},{x:165,y:200},{x:35,y:200},{x:0,y:75},{x:100,y:0}]);                   // pentagon (closed)
+reg('resonance',    (() => { const o = []; for (let i = 0; i <= 60; i++) { const a = i * 0.5, r = 20 + i * 1.0; o.push({ x: 100 + Math.cos(a) * r, y: 100 + Math.sin(a) * r }); } return o; })()); // outward spiral
+
+// COUNTER (4)
+reg('parry',        [{x:0,y:0},{x:200,y:0},{x:200,y:120},{x:0,y:120},{x:0,y:0}]);                                    // rectangle (closed)
+reg('counterspell', (() => { const o = []; for (let i = 0; i <= 50; i++) { const a = i * 0.6, r = 70 - i * 1.2; o.push({ x: 100 + Math.cos(a) * Math.max(3, r), y: 100 + Math.sin(a) * Math.max(3, r) }); } return o; })()); // tighter spiral (whirl)
+reg('reverse',      [{x:0,y:0},{x:50,y:100},{x:100,y:0},{x:150,y:100},{x:0,y:0}]);                                   // omega-ish (closed)
+reg('vengeance',    [{x:100,y:0},{x:50,y:80},{x:80,y:160},{x:100,y:200},{x:120,y:160},{x:150,y:80},{x:100,y:0}]);    // teardrop (closed)
 
 // ═══════════════════════════════════════════════════════════
 // GLYPH DEFINITIONS
 // ═══════════════════════════════════════════════════════════
-const GLYPHS = {
-  bolt:     { id: 'bolt',     nameJa: '雷撃',   nameEn: 'Bolt',     mana: 25, dmg: 15, color: '#7df9ff', shape: 'zigzag' },
-  fireball: { id: 'fireball', nameJa: '火球',   nameEn: 'Fireball', mana: 35, dmg: 22, color: '#ff8844', shape: 'circle' },
-  barrier:  { id: 'barrier',  nameJa: '結界',   nameEn: 'Barrier',  mana: 30, dmg: 0,  color: '#88ff88', shape: 'triangle' },
-  heal:     { id: 'heal',     nameJa: '治癒',   nameEn: 'Heal',     mana: 40, dmg: 0,  color: '#ff44dd', shape: 'check' },
-  parry:    { id: 'parry',    nameJa: 'パリィ', nameEn: 'Parry',    mana: 20, dmg: 0,  color: '#ffdd44', shape: 'rect' },
+const G = {
+  // ATTACKS
+  bolt:         { ja:'雷撃',   en:'Bolt',          cat:'attack',  syn:'indep',     mana:25, dmg:15, color:'#7df9ff', shape:'zigzag',     desc:'instant beam' },
+  fireball:     { ja:'火球',   en:'Fireball',      cat:'attack',  syn:'indep',     mana:35, dmg:22, color:'#ff8844', shape:'circle',     desc:'arcing projectile' },
+  icicle:       { ja:'氷柱',   en:'Icicle',        cat:'attack',  syn:'indep',     mana:20, dmg:12, color:'#aaeeff', shape:'v',          desc:'piercing shard' },
+  windblade:    { ja:'風刃',   en:'Wind Blade',    cat:'attack',  syn:'indep',     mana:30, dmg:18, color:'#88ffcc', shape:'crescent',   desc:'fast slicing arc' },
+  beam:         { ja:'光線',   en:'Light Beam',    cat:'attack',  syn:'indep',     mana:50, dmg:30, color:'#ffff88', shape:'twoLines',   desc:'homing photon beam' },
+  gravorb:      { ja:'重力球', en:'Grav Orb',      cat:'attack',  syn:'soft',      mana:40, dmg:8,  color:'#aa66ff', shape:'spiral',     desc:'pull + low dmg; sets gravWeak buff' },
+  lightnet:     { ja:'雷網',   en:'Lightning Net', cat:'attack',  syn:'indep',     mana:35, dmg:14, color:'#88ddff', shape:'grid',       desc:'area dmg + 1.5s stun' },
+  flame:        { ja:'火炎放射',en:'Flamethrower', cat:'attack',  syn:'indep',     mana:60, dmg:5,  color:'#ff4422', shape:'longWave',   desc:'3s burn DOT 5/0.5s' },
+  shadowstrike: { ja:'影刺',   en:'Shadow Strike', cat:'attack',  syn:'soft',      mana:45, dmg:25, color:'#9944dd', shape:'x',          desc:'teleport-strike' },
+  doubleburst:  { ja:'双爆',   en:'Double Burst',  cat:'attack',  syn:'requiredCombo', mana:80, dmg:40, color:'#ff44dd', shape:'doubleTri', desc:'huge dmg, requires fire-prep' },
+  // DEFENSES
+  barrier:      { ja:'結界',   en:'Barrier',       cat:'defense', syn:'indep',     mana:30, color:'#88ff88', shape:'triangle',  desc:'3s damage block' },
+  reflect:      { ja:'反射',   en:'Reflect',       cat:'defense', syn:'indep',     mana:50, color:'#aaffaa', shape:'invTriangle',desc:'reflect next hit' },
+  heal:         { ja:'治癒',   en:'Heal',          cat:'defense', syn:'indep',     mana:40, color:'#ff44dd', shape:'check',      desc:'+30 HP' },
+  cleanse:      { ja:'浄化',   en:'Cleanse',       cat:'defense', syn:'indep',     mana:25, color:'#ddffdd', shape:'wave',       desc:'remove all debuffs' },
+  mirror:       { ja:'鏡',     en:'Mirror',        cat:'defense', syn:'soft',      mana:60, color:'#dddddd', shape:'figure8',    desc:'next glyph fires twice' },
+  immortal:     { ja:'不滅',   en:'Immortal',      cat:'defense', syn:'requiredCombo', mana:70, color:'#ffdd00', shape:'star',  desc:'3s invuln' },
+  manadrain:    { ja:'マナ吸収',en:'Mana Drain',   cat:'defense', syn:'indep',     mana:35, color:'#aa88ff', shape:'arrow',      desc:'enemy mana -20' },
+  selfbuff:     { ja:'自己強化',en:'Self Empower', cat:'defense', syn:'soft',      mana:45, color:'#ff8844', shape:'upTriangle', desc:'next glyph dmg ×2' },
+  // MOVEMENT
+  teleport:     { ja:'瞬間移動',en:'Teleport',     cat:'movement', syn:'indep',     mana:30, color:'#cc88ff', shape:'dot',       desc:'evade next 1 hit (0.5s window)' },
+  windrun:      { ja:'風走',   en:'Wind Run',      cat:'movement', syn:'indep',     mana:20, color:'#88ffaa', shape:'shortWave', desc:'+50% mana regen 3s' },
+  timeslow:     { ja:'時遅',   en:'Time Slow',     cat:'movement', syn:'indep',     mana:50, color:'#88aaff', shape:'clock',     desc:'enemy mana regen halved 3s' },
+  shadowwalk:   { ja:'影渡',   en:'Shadow Walk',   cat:'movement', syn:'soft',      mana:40, color:'#440088', shape:'narrowZ',   desc:'evade + next attack +50% dmg' },
+  // TRAP / COMBO
+  trapset:      { ja:'罠設置', en:'Trap Set',      cat:'trap',    syn:'requiredCombo', mana:30, color:'#ffaa00', shape:'xMark',  desc:'place trap (max 2)' },
+  trigger:      { ja:'発動',   en:'Trigger',       cat:'trap',    syn:'requiredCombo', mana:10, color:'#ffaa00', shape:'shortLine', desc:'detonate placed traps (25 dmg ea)' },
+  manazone:     { ja:'結界陣', en:'Mana Sigil',    cat:'trap',    syn:'requiredCombo', mana:50, color:'#ffaa44', shape:'pentagon', desc:'+10/sec mana regen 5s' },
+  resonance:    { ja:'共鳴',   en:'Resonance',     cat:'trap',    syn:'requiredCombo', mana:30, color:'#ffeeaa', shape:'spiralOut', desc:'next glyph mana cost halved' },
+  // COUNTER
+  parry:        { ja:'パリィ', en:'Parry',         cat:'counter', syn:'indep',     mana:20, color:'#ffdd44', shape:'rect',       desc:'block next 1 hit (1s window)' },
+  counterspell: { ja:'召し上げ',en:'Counterspell', cat:'counter', syn:'soft',      mana:40, color:'#ddff44', shape:'whirl',      desc:'1s enemy mana lock' },
+  reverse:      { ja:'反転',   en:'Reverse',       cat:'counter', syn:'requiredCombo', mana:60, color:'#ff44aa', shape:'omega',  desc:'steal enemy buffs' },
+  vengeance:    { ja:'復讐',   en:'Vengeance',     cat:'counter', syn:'requiredCombo', mana:70, color:'#ff0044', shape:'teardrop', desc:'next hit on you triggers 2x counter' },
 };
-const GLYPH_ORDER = ['bolt', 'fireball', 'barrier', 'heal', 'parry'];
+const G_ORDER = Object.keys(G);
+const CAT_COLOR = { attack: '#ff8866', defense: '#88ff88', movement: '#88ccff', trap: '#ffaa44', counter: '#ffdd44' };
+const CAT_LABEL_JA = { attack: '攻撃', defense: '防御', movement: '移動', trap: '設置', counter: '反応' };
 
 // ═══════════════════════════════════════════════════════════
 // GAME STATE
 // ═══════════════════════════════════════════════════════════
-const initialState = () => ({
-  p1: { hp: 100, mana: 100, manaMax: 100, hpMax: 100, side: 'left',  x: 130, y: 480, name: '1P', barrier: 0, parry: 0, lastCast: null, lastCastFlash: 0 },
-  ai: { hp: 100, mana: 100, manaMax: 100, hpMax: 100, side: 'right', x: 830, y: 480, name: 'AI', barrier: 0, parry: 0, lastCast: null, lastCastFlash: 0 },
-  matchTime: 90.0,
-  gameOver: false,
-  winner: null,
-  effects: [],            // visual effects (projectiles, hits, auras)
-  projectiles: [],        // moving projectiles with damage
-  scoreFeedback: null,    // { tier, glyphId, score, life }
-  drawTrail: [],
-  bgPulse: 0,
-  shakeFrames: 0,
-  shakeAmp: 0,
-  flashAlpha: 0,
+const initialPlayer = (side, x) => ({
+  side, x, y: 480, name: side === 'left' ? '1P' : 'AI',
+  hp: 100, hpMax: 100, mana: 100, manaMax: 100,
+  // Buffs / states (durations in seconds)
+  barrier: 0, parry: 0, invuln: 0, reflectNext: 0, mirrorNext: 0, doubleNext: 0, halveNext: 0,
+  burn: 0, burnDmg: 0, stun: 0, slowMana: 0, fastMana: 0, manaLock: 0, gravWeak: 0,
+  // Trap state
+  traps: 0,
+  // Vengeance: when hit, triggers 2x counter
+  vengeance: 0,
+  // Visuals
+  lastCast: null, lastCastFlash: 0,
+  // Synergy state (Sprint 1-A3 will use this; tracked now for sequencing)
+  lastFireGlyph: null,    // last attack glyph cast (for fire→fire combo etc.)
+  lastFireTimer: 0,       // sec since last cast
 });
-let state = initialState();
-let aiCastCooldown = 2.5;
+const newState = () => ({
+  p1: initialPlayer('left', 130),
+  ai: initialPlayer('right', 830),
+  matchTime: 90.0,
+  gameOver: false, winner: null,
+  effects: [], projectiles: [],
+  scoreFeedback: null, drawTrail: [],
+  bgPulse: 0, shakeFrames: 0, shakeAmp: 0, flashAlpha: 0,
+  bookOpen: false,
+});
+let state = newState();
+let aiCooldown = 2.5;
 
 // ═══════════════════════════════════════════════════════════
-// AUDIO (Web Audio simple beeps)
+// AUDIO
 // ═══════════════════════════════════════════════════════════
 const AC = window.AudioContext || window.webkitAudioContext;
 const ac = AC ? new AC() : null;
 let drawTone = null;
 function ensureAudio() { if (ac && ac.state === 'suspended') ac.resume(); }
 function startDrawTone() {
-  if (!ac) return;
+  if (!ac || drawTone) return;
   ensureAudio();
-  if (drawTone) return;
   const o = ac.createOscillator(), g = ac.createGain();
   o.type = 'sawtooth'; o.frequency.value = 220;
-  g.gain.value = 0.0; g.gain.linearRampToValueAtTime(0.04, ac.currentTime + 0.05);
+  g.gain.value = 0; g.gain.linearRampToValueAtTime(0.04, ac.currentTime + 0.05);
   o.connect(g); g.connect(ac.destination); o.start();
   drawTone = { o, g };
 }
 function stopDrawTone() {
   if (!drawTone || !ac) return;
-  const { o, g } = drawTone;
-  g.gain.cancelScheduledValues(ac.currentTime);
+  const { o, g } = drawTone; g.gain.cancelScheduledValues(ac.currentTime);
   g.gain.linearRampToValueAtTime(0, ac.currentTime + 0.05);
   setTimeout(() => { try { o.stop(); } catch (e) {} }, 80);
   drawTone = null;
 }
-function beep(freq, dur, type, vol) {
-  if (!ac) return;
-  ensureAudio();
+function beep(f, d, t, v) {
+  if (!ac) return; ensureAudio();
   const o = ac.createOscillator(), g = ac.createGain();
-  o.type = type || 'sine'; o.frequency.value = freq;
-  const v = vol == null ? 0.12 : vol;
-  g.gain.setValueAtTime(0, ac.currentTime);
-  g.gain.linearRampToValueAtTime(v, ac.currentTime + 0.01);
-  g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + dur);
-  o.connect(g); g.connect(ac.destination); o.start(); o.stop(ac.currentTime + dur);
+  o.type = t || 'sine'; o.frequency.value = f;
+  const vol = v == null ? 0.12 : v;
+  g.gain.setValueAtTime(0, ac.currentTime); g.gain.linearRampToValueAtTime(vol, ac.currentTime + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + d);
+  o.connect(g); g.connect(ac.destination); o.start(); o.stop(ac.currentTime + d);
 }
+const FREQ = { attack: 880, defense: 440, movement: 660, trap: 330, counter: 1200 };
 function fireSE(glyphId, tier) {
-  const map = { bolt: 880, fireball: 220, barrier: 440, heal: 660, parry: 1200 };
-  const f = map[glyphId] || 500;
+  const def = G[glyphId]; if (!def) return;
+  const f = FREQ[def.cat] || 500;
   if (tier === 'critical') { beep(f * 2, 0.18, 'square', 0.18); beep(f, 0.30, 'sawtooth', 0.10); }
   else if (tier === 'normal') beep(f, 0.18, 'square', 0.12);
   else if (tier === 'weak') beep(f * 0.5, 0.10, 'triangle', 0.06);
@@ -209,92 +241,229 @@ function hitSE() { beep(80, 0.15, 'sawtooth', 0.18); beep(160, 0.06, 'square', 0
 function unfireSE() { beep(120, 0.05, 'square', 0.04); }
 
 // ═══════════════════════════════════════════════════════════
-// SCORING TIERS
+// SCORE TIERS
 // ═══════════════════════════════════════════════════════════
-function scoreToTier(score) {
-  if (score < 0.30) return 'unfire';
-  if (score < 0.60) return 'weak';
-  if (score < 0.85) return 'normal';
-  return 'critical';
-}
-function tierMult(tier) { return tier === 'weak' ? 0.5 : tier === 'critical' ? 1.5 : 1.0; }
-function tierColor(tier) { return tier === 'critical' ? '#ffdd44' : tier === 'normal' ? '#7df9ff' : tier === 'weak' ? '#888' : '#a44'; }
+function scoreToTier(s) { return s < 0.30 ? 'unfire' : s < 0.60 ? 'weak' : s < 0.85 ? 'normal' : 'critical'; }
+function tierMult(t) { return t === 'weak' ? 0.5 : t === 'critical' ? 1.5 : 1.0; }
+function tierColor(t) { return t === 'critical' ? '#ffdd44' : t === 'normal' ? '#7df9ff' : t === 'weak' ? '#888' : '#a44'; }
 
 // ═══════════════════════════════════════════════════════════
-// CAST RESOLUTION
+// CAST RESOLUTION + STATUS / EFFECTS
 // ═══════════════════════════════════════════════════════════
-function applyDamage(target, dmg) {
-  if (target.parry > 0) { target.parry = 0; pushEffect({ type: 'parryFlash', who: target, life: 24 }); return 0; }
+function applyDamage(target, dmg, opts) {
+  opts = opts || {};
+  if (target.invuln > 0) { pushEffect({ type: 'invulnFlash', who: target, life: 18 }); return 0; }
+  if (target.parry > 0) {
+    target.parry = 0;
+    pushEffect({ type: 'parryFlash', who: target, life: 24 });
+    triggerVengeance(target, opts.attacker);
+    return 0;
+  }
+  if (target.reflectNext > 0 && opts.attacker) {
+    target.reflectNext = 0;
+    pushEffect({ type: 'reflectFlash', who: target, life: 24 });
+    return applyDamage(opts.attacker, dmg, { attacker: target });
+  }
   if (target.barrier > 0) { pushEffect({ type: 'barrierHit', who: target, life: 18 }); return 0; }
+  // gravWeak buff = caster's previous gravorb. attacker-side flag, applied when attacker has it
+  if (opts.attacker && opts.attacker.gravWeak > 0) { dmg *= 1.3; opts.attacker.gravWeak = 0; }
+  // Receiver-side debuff like burn dmg multiplier? (no for now)
   target.hp = Math.max(0, target.hp - dmg);
   state.shakeFrames = 12; state.shakeAmp = 6;
-  state.flashAlpha = 0.18;
+  state.flashAlpha = Math.max(state.flashAlpha, 0.18);
   hitSE();
   pushEffect({ type: 'hit', x: target.x, y: target.y - 30, life: 24, color: '#ff4488' });
+  triggerVengeance(target, opts.attacker);
   if (target.hp <= 0 && !state.gameOver) endMatch(target === state.p1 ? 'ai' : 'p1');
   return dmg;
 }
+function triggerVengeance(target, attacker) {
+  if (!attacker || target.vengeance <= 0) return;
+  target.vengeance = 0;
+  // Counter: 30 dmg, fired back
+  setTimeout(() => { if (!state.gameOver) { applyDamage(attacker, 30, { attacker: target }); pushEffect({ type: 'vengeanceFlash', who: attacker, life: 24 }); beep(220, 0.15, 'sawtooth', 0.15); } }, 200);
+}
 function castGlyph(casterKey, glyphId, score, tier) {
-  const caster = state[casterKey];
-  const otherKey = casterKey === 'p1' ? 'ai' : 'p1';
-  const target = state[otherKey];
-  const def = GLYPHS[glyphId];
-  if (!def) return;
-  if (caster.mana < def.mana) {
-    state.scoreFeedback = { glyphId, score, tier, fired: false, reason: 'NO MANA', caster: casterKey, life: 80 };
-    unfireSE();
-    return;
+  const c = state[casterKey], otherKey = casterKey === 'p1' ? 'ai' : 'p1', t = state[otherKey];
+  const def = G[glyphId]; if (!def) return;
+  // Mana lock check
+  if (c.manaLock > 0) {
+    state.scoreFeedback = { glyphId, score, tier, fired: false, reason: 'MANA LOCKED', caster: casterKey, life: 80 };
+    unfireSE(); return;
   }
-  caster.mana -= def.mana;
-  caster.lastCast = glyphId;
-  caster.lastCastFlash = 60;
-  const mult = tierMult(tier);
+  // Mana cost (apply halveNext)
+  let manaCost = def.mana;
+  if (c.halveNext > 0) { manaCost = Math.ceil(manaCost / 2); c.halveNext = 0; }
+  if (c.mana < manaCost) {
+    state.scoreFeedback = { glyphId, score, tier, fired: false, reason: 'NO MANA', caster: casterKey, life: 80 };
+    unfireSE(); return;
+  }
+  c.mana -= manaCost;
+  c.lastCast = glyphId;
+  c.lastCastFlash = 60;
+  c.lastFireGlyph = glyphId;
+  c.lastFireTimer = 0;
+  let mult = tierMult(tier);
+  // Self-buff "doubleNext" doubles dmg on the NEXT attack (not the cast that activates it)
+  // applied at attack-resolution time
+  if (def.cat === 'attack' && c.doubleNext > 0) { mult *= 2; c.doubleNext = 0; }
   state.scoreFeedback = { glyphId, score, tier, fired: true, caster: casterKey, life: 80 };
   fireSE(glyphId, tier);
   if (tier === 'critical') state.flashAlpha = Math.max(state.flashAlpha, 0.22);
+  // Mirror: if next glyph after mirror, fire effect twice (here mark and consume on this cast)
+  const fireTimes = c.mirrorNext > 0 && def.cat !== 'defense' ? (c.mirrorNext = 0, 2) : 1;
+  for (let i = 0; i < fireTimes; i++) resolveGlyphEffect(c, t, casterKey, otherKey, def, mult, glyphId);
+}
+function resolveGlyphEffect(c, t, ck, ok, def, mult, glyphId) {
   switch (glyphId) {
     case 'bolt':
-      pushEffect({ type: 'boltBeam', from: caster, to: target, life: 16, color: def.color, dmg: def.dmg * mult, applied: false });
+      pushEffect({ type: 'boltBeam', from: c, to: t, life: 16, color: def.color, dmg: def.dmg * mult, applied: false, attacker: c });
       break;
     case 'fireball':
-      state.projectiles.push({ x: caster.x, y: caster.y - 30, tx: target.x, ty: target.y - 30, t: 0, dur: 38, dmg: def.dmg * mult, color: def.color, target: otherKey, kind: 'fireball' });
+      state.projectiles.push({ x: c.x, y: c.y - 30, tx: t.x, ty: t.y - 30, t: 0, dur: 38, dmg: def.dmg * mult, color: def.color, target: ok, kind: 'fireball', attacker: c });
+      break;
+    case 'icicle':
+      state.projectiles.push({ x: c.x, y: c.y - 30, tx: t.x, ty: t.y - 30, t: 0, dur: 22, dmg: def.dmg * mult, color: def.color, target: ok, kind: 'icicle', attacker: c });
+      break;
+    case 'windblade':
+      state.projectiles.push({ x: c.x, y: c.y - 40, tx: t.x, ty: t.y - 40, t: 0, dur: 18, dmg: def.dmg * mult, color: def.color, target: ok, kind: 'windblade', attacker: c });
+      break;
+    case 'beam':
+      pushEffect({ type: 'beamHoming', from: c, to: t, life: 24, color: def.color, dmg: def.dmg * mult, applied: false, attacker: c });
+      break;
+    case 'gravorb':
+      pushEffect({ type: 'boltBeam', from: c, to: t, life: 14, color: def.color, dmg: def.dmg * mult, applied: false, attacker: c });
+      c.gravWeak = 1; // next attack +30%
+      break;
+    case 'lightnet':
+      pushEffect({ type: 'netHit', who: t, life: 30, color: def.color, dmg: def.dmg * mult, applied: false, attacker: c });
+      t.stun = Math.max(t.stun, 1.5 * mult);
+      break;
+    case 'flame':
+      // Mini direct dmg + apply burn
+      pushEffect({ type: 'flameBurst', from: c, to: t, life: 22, color: def.color, dmg: def.dmg * mult, applied: false, attacker: c });
+      t.burn = Math.max(t.burn, 3.0 * mult);
+      t.burnDmg = Math.max(t.burnDmg, 3 * mult); // per 0.5s
+      break;
+    case 'shadowstrike':
+      // Quick teleport + strike
+      pushEffect({ type: 'tpFlash', who: c, life: 12 });
+      pushEffect({ type: 'tpFlash', who: t, life: 12 });
+      pushEffect({ type: 'boltBeam', from: c, to: t, life: 14, color: def.color, dmg: def.dmg * mult, applied: false, attacker: c });
+      break;
+    case 'doubleburst':
+      pushEffect({ type: 'megaBoom', x: t.x, y: t.y - 30, life: 36, color: def.color, dmg: def.dmg * mult, applied: false, attacker: c, target: t });
+      state.flashAlpha = Math.max(state.flashAlpha, 0.35);
       break;
     case 'barrier':
-      caster.barrier = 3.0 * mult;
-      pushEffect({ type: 'barrierStart', who: caster, life: 30 });
+      c.barrier = 3.0 * mult;
+      pushEffect({ type: 'barrierStart', who: c, life: 30 });
+      break;
+    case 'reflect':
+      c.reflectNext = 1;
+      pushEffect({ type: 'reflectStart', who: c, life: 30 });
       break;
     case 'heal':
-      caster.hp = Math.min(caster.hpMax, caster.hp + 30 * mult);
-      pushEffect({ type: 'healAura', who: caster, life: 50 });
+      c.hp = Math.min(c.hpMax, c.hp + 30 * mult);
+      pushEffect({ type: 'healAura', who: c, life: 50 });
+      break;
+    case 'cleanse':
+      c.burn = 0; c.burnDmg = 0; c.stun = 0; c.slowMana = 0; c.manaLock = 0;
+      pushEffect({ type: 'cleanseAura', who: c, life: 30 });
+      break;
+    case 'mirror':
+      c.mirrorNext = 1;
+      pushEffect({ type: 'mirrorStart', who: c, life: 30 });
+      break;
+    case 'immortal':
+      c.invuln = 3.0 * mult;
+      pushEffect({ type: 'invulnStart', who: c, life: 36 });
+      break;
+    case 'manadrain':
+      const drain = Math.min(t.mana, 20 * mult);
+      t.mana -= drain;
+      c.mana = Math.min(c.manaMax, c.mana + drain * 0.5);
+      pushEffect({ type: 'manaDrainBeam', from: c, to: t, life: 20, color: def.color });
+      break;
+    case 'selfbuff':
+      c.doubleNext = 1;
+      pushEffect({ type: 'powerStart', who: c, life: 30 });
+      break;
+    case 'teleport':
+      c.parry = 0.5 * mult;     // brief evade window
+      pushEffect({ type: 'tpFlash', who: c, life: 18 });
+      break;
+    case 'windrun':
+      c.fastMana = Math.max(c.fastMana, 3.0 * mult);
+      pushEffect({ type: 'windAura', who: c, life: 40 });
+      break;
+    case 'timeslow':
+      t.slowMana = Math.max(t.slowMana, 3.0 * mult);
+      pushEffect({ type: 'slowAura', who: t, life: 40 });
+      break;
+    case 'shadowwalk':
+      c.parry = 0.6 * mult;
+      c.doubleNext = 1;
+      pushEffect({ type: 'tpFlash', who: c, life: 18 });
+      break;
+    case 'trapset':
+      c.traps = Math.min(2, c.traps + 1);
+      pushEffect({ type: 'trapPlace', who: c, life: 40 });
+      break;
+    case 'trigger':
+      if (c.traps > 0) {
+        const dmgEach = 25 * mult;
+        for (let i = 0; i < c.traps; i++) applyDamage(t, dmgEach, { attacker: c });
+        pushEffect({ type: 'trapBoom', x: t.x, y: t.y - 30, life: 30, color: def.color });
+        c.traps = 0;
+      } else {
+        pushEffect({ type: 'unfire', who: c, life: 16 });
+      }
+      break;
+    case 'manazone':
+      c.fastMana = Math.max(c.fastMana, 5.0 * mult);
+      pushEffect({ type: 'sigilAura', who: c, life: 60 });
+      break;
+    case 'resonance':
+      c.halveNext = 1;
+      pushEffect({ type: 'resAura', who: c, life: 30 });
       break;
     case 'parry':
-      caster.parry = 1.0 * mult;
-      pushEffect({ type: 'parryStart', who: caster, life: 30 });
+      c.parry = 1.0 * mult;
+      pushEffect({ type: 'parryStart', who: c, life: 30 });
+      break;
+    case 'counterspell':
+      t.manaLock = Math.max(t.manaLock, 1.0 * mult);
+      pushEffect({ type: 'lockBeam', from: c, to: t, life: 22, color: def.color });
+      break;
+    case 'reverse':
+      // Steal: copy enemy buffs to self, clear theirs
+      const fields = ['barrier', 'parry', 'invuln', 'reflectNext', 'mirrorNext', 'doubleNext', 'halveNext', 'fastMana'];
+      for (const f of fields) { c[f] = Math.max(c[f], t[f]); t[f] = 0; }
+      pushEffect({ type: 'stealBeam', from: c, to: t, life: 24 });
+      break;
+    case 'vengeance':
+      c.vengeance = 1;
+      pushEffect({ type: 'vengeanceStart', who: c, life: 30 });
       break;
   }
 }
 function pushEffect(e) { state.effects.push(e); }
 function endMatch(winnerKey) {
-  state.gameOver = true;
-  state.winner = winnerKey;
-  state.flashAlpha = 0.45;
-  state.shakeFrames = 30; state.shakeAmp = 10;
+  state.gameOver = true; state.winner = winnerKey;
+  state.flashAlpha = 0.45; state.shakeFrames = 30; state.shakeAmp = 10;
   beep(80, 0.6, 'sawtooth', 0.15);
   setTimeout(() => beep(440, 0.3, 'square', 0.12), 200);
   setTimeout(() => beep(660, 0.3, 'square', 0.12), 380);
 }
 
 // ═══════════════════════════════════════════════════════════
-// INPUT (mouse + touch unified via pointer events)
+// INPUT
 // ═══════════════════════════════════════════════════════════
-let drawing = false;
-let stroke = [];
-function canvasCoords(ev) {
-  const r = canvas.getBoundingClientRect();
-  return { x: (ev.clientX - r.left) * (canvas.width / r.width), y: (ev.clientY - r.top) * (canvas.height / r.height) };
-}
+let drawing = false, stroke = [];
+function canvasCoords(ev) { const r = canvas.getBoundingClientRect(); return { x: (ev.clientX - r.left) * (canvas.width / r.width), y: (ev.clientY - r.top) * (canvas.height / r.height) }; }
 canvas.addEventListener('pointerdown', e => {
-  if (state.gameOver) return;
+  if (state.gameOver || state.bookOpen) return;
   ensureAudio();
   drawing = true; stroke = [canvasCoords(e)]; state.drawTrail = stroke;
   startDrawTone();
@@ -303,90 +472,96 @@ canvas.addEventListener('pointerdown', e => {
 });
 canvas.addEventListener('pointermove', e => {
   if (!drawing) return;
-  const p = canvasCoords(e);
-  const last = stroke[stroke.length - 1];
-  if (Math.hypot(p.x - last.x, p.y - last.y) > 2) {
-    stroke.push(p);
-    if (drawTone) drawTone.o.frequency.value = 200 + Math.min(800, Math.hypot(p.x - last.x, p.y - last.y) * 40);
-  }
+  const p = canvasCoords(e), last = stroke[stroke.length - 1];
+  if (Math.hypot(p.x - last.x, p.y - last.y) > 2) { stroke.push(p); if (drawTone) drawTone.o.frequency.value = 200 + Math.min(800, Math.hypot(p.x - last.x, p.y - last.y) * 40); }
   e.preventDefault();
 });
 function endStroke(e) {
   if (!drawing) return;
-  drawing = false;
-  stopDrawTone();
+  drawing = false; stopDrawTone();
   if (stroke.length < 5) { state.drawTrail = []; return; }
   const res = recognize(stroke);
   const tier = scoreToTier(res.score);
-  if (tier === 'unfire') {
-    state.scoreFeedback = { glyphId: res.name, score: res.score, tier, fired: false, reason: 'UNFIRED', caster: 'p1', life: 80 };
-    unfireSE();
-  } else {
-    castGlyph('p1', res.name, res.score, tier);
-  }
-  state.drawTrail = [];
-  stroke = [];
+  if (tier === 'unfire') { state.scoreFeedback = { glyphId: res.name, score: res.score, tier, fired: false, reason: 'UNFIRED', caster: 'p1', life: 80 }; unfireSE(); }
+  else { castGlyph('p1', res.name, res.score, tier); }
+  state.drawTrail = []; stroke = [];
   e && e.preventDefault && e.preventDefault();
 }
 canvas.addEventListener('pointerup', endStroke);
 canvas.addEventListener('pointercancel', endStroke);
 canvas.addEventListener('pointerleave', e => { if (drawing) endStroke(e); });
 window.addEventListener('keydown', e => {
-  if (e.key === ' ' || e.key === 'Enter') {
-    if (state.gameOver) restart();
-    e.preventDefault();
-  }
+  if (e.key === ' ' || e.key === 'Enter') { if (state.gameOver) restart(); e.preventDefault(); }
   if (e.key === 'r' || e.key === 'R') restart();
+  if (e.key === 'Tab') { state.bookOpen = !state.bookOpen; e.preventDefault(); }
+  if (e.key === 'Escape') state.bookOpen = false;
 });
-
-function restart() { state = initialState(); aiCastCooldown = 2.5; }
+function restart() { state = newState(); aiCooldown = 2.5; }
 
 // ═══════════════════════════════════════════════════════════
-// AI (dummy: random glyph every 2.5–4.5s, 60–90% score)
+// AI (still dummy — Sprint 1-A5 will tier this)
 // ═══════════════════════════════════════════════════════════
+const AI_POOL = ['bolt', 'fireball', 'icicle', 'windblade', 'gravorb', 'lightnet', 'flame', 'shadowstrike', 'barrier', 'heal', 'cleanse', 'manadrain', 'selfbuff', 'parry', 'windrun', 'timeslow', 'counterspell'];
 function updateAI(dt) {
   if (state.gameOver) return;
-  aiCastCooldown -= dt;
-  if (aiCastCooldown > 0) return;
-  const candidates = GLYPH_ORDER.filter(id => state.ai.mana >= GLYPHS[id].mana);
-  if (candidates.length === 0) { aiCastCooldown = 1.0; return; }
+  if (state.ai.stun > 0 || state.ai.manaLock > 0) { aiCooldown = Math.max(aiCooldown, 0.5); return; }
+  aiCooldown -= dt;
+  if (aiCooldown > 0) return;
   let pick;
-  if (state.ai.hp < 40 && state.ai.mana >= 40 && Math.random() < 0.6) pick = 'heal';
-  else if (state.p1.hp < 25 && state.ai.mana >= 25) pick = Math.random() < 0.7 ? 'bolt' : 'fireball';
-  else pick = candidates[Math.floor(Math.random() * candidates.length)];
-  if (!candidates.includes(pick)) pick = candidates[0];
-  const score = 0.60 + Math.random() * 0.32; // mostly normal, occasionally high
-  const tier = scoreToTier(score);
-  castGlyph('ai', pick, score, tier);
-  aiCastCooldown = 2.5 + Math.random() * 2.0;
+  if (state.ai.hp < 35 && state.ai.mana >= 40 && Math.random() < 0.65) pick = 'heal';
+  else if (state.p1.hp < 25 && state.ai.mana >= 25) pick = ['bolt', 'fireball', 'beam', 'doubleburst'][Math.floor(Math.random() * 4)];
+  else if (state.p1.barrier > 0 && state.ai.mana >= 30 && Math.random() < 0.4) pick = 'manadrain';
+  else pick = AI_POOL[Math.floor(Math.random() * AI_POOL.length)];
+  if (!G[pick] || state.ai.mana < G[pick].mana) {
+    const ok = AI_POOL.filter(id => state.ai.mana >= G[id].mana);
+    if (ok.length === 0) { aiCooldown = 1.0; return; }
+    pick = ok[Math.floor(Math.random() * ok.length)];
+  }
+  const score = 0.60 + Math.random() * 0.32;
+  castGlyph('ai', pick, score, scoreToTier(score));
+  aiCooldown = 2.4 + Math.random() * 2.0;
 }
 
 // ═══════════════════════════════════════════════════════════
 // UPDATE
 // ═══════════════════════════════════════════════════════════
+let burnTickAcc = { p1: 0, ai: 0 };
 function update(dt) {
   state.bgPulse += dt;
-  if (state.gameOver) {
-    state.flashAlpha *= 0.92;
-    if (state.shakeFrames > 0) state.shakeFrames--;
-    return;
-  }
+  if (state.gameOver) { state.flashAlpha *= 0.92; if (state.shakeFrames > 0) state.shakeFrames--; return; }
+  if (state.bookOpen) return;
   state.matchTime -= dt;
-  if (state.matchTime <= 0) {
-    state.matchTime = 0;
-    endMatch(state.p1.hp >= state.ai.hp ? 'p1' : 'ai');
-    return;
+  if (state.matchTime <= 0) { state.matchTime = 0; endMatch(state.p1.hp >= state.ai.hp ? 'p1' : 'ai'); return; }
+  for (const k of ['p1', 'ai']) {
+    const p = state[k];
+    // Mana regen with status modifiers
+    let regen = 5;
+    if (p.fastMana > 0) regen += 5;
+    if (p.slowMana > 0) regen *= 0.5;
+    p.mana = Math.min(p.manaMax, p.mana + regen * dt);
+    // Status timers (in seconds)
+    p.barrier = Math.max(0, p.barrier - dt);
+    p.parry = Math.max(0, p.parry - dt);
+    p.invuln = Math.max(0, p.invuln - dt);
+    p.fastMana = Math.max(0, p.fastMana - dt);
+    p.slowMana = Math.max(0, p.slowMana - dt);
+    p.stun = Math.max(0, p.stun - dt);
+    p.manaLock = Math.max(0, p.manaLock - dt);
+    p.lastFireTimer += dt;
+    // Burn DOT
+    if (p.burn > 0) {
+      burnTickAcc[k] += dt;
+      while (burnTickAcc[k] >= 0.5 && p.burn > 0) {
+        burnTickAcc[k] -= 0.5;
+        p.hp = Math.max(0, p.hp - p.burnDmg);
+        pushEffect({ type: 'burnTick', who: p, life: 14 });
+      }
+      p.burn = Math.max(0, p.burn - dt);
+      if (p.burn === 0) { p.burnDmg = 0; burnTickAcc[k] = 0; }
+      if (p.hp <= 0 && !state.gameOver) endMatch(k === 'p1' ? 'ai' : 'p1');
+    }
+    if (p.lastCastFlash > 0) p.lastCastFlash--;
   }
-  // Mana regen
-  state.p1.mana = Math.min(state.p1.manaMax, state.p1.mana + 5 * dt);
-  state.ai.mana = Math.min(state.ai.manaMax, state.ai.mana + 5 * dt);
-  // Status timers
-  state.p1.barrier = Math.max(0, state.p1.barrier - dt);
-  state.ai.barrier = Math.max(0, state.ai.barrier - dt);
-  state.p1.parry = Math.max(0, state.p1.parry - dt);
-  state.ai.parry = Math.max(0, state.ai.parry - dt);
-  if (state.p1.lastCastFlash > 0) state.p1.lastCastFlash--;
-  if (state.ai.lastCastFlash > 0) state.ai.lastCastFlash--;
   // AI
   updateAI(dt);
   // Projectiles
@@ -394,23 +569,22 @@ function update(dt) {
     pr.t++;
     if (pr.t >= pr.dur) {
       const tgt = state[pr.target];
-      const dmgDealt = applyDamage(tgt, pr.dmg);
-      pushEffect({ type: 'explosion', x: tgt.x, y: tgt.y - 30, life: 22, color: pr.color, size: 60 });
+      applyDamage(tgt, pr.dmg, { attacker: pr.attacker });
+      pushEffect({ type: 'explosion', x: tgt.x, y: tgt.y - 30, life: 22, color: pr.color, size: pr.kind === 'fireball' ? 60 : 30 });
     }
   }
   state.projectiles = state.projectiles.filter(pr => pr.t < pr.dur);
-  // Bolt beam (instant; resolve after 1 frame)
+  // Effects with delayed damage application
   for (const ef of state.effects) {
-    if (ef.type === 'boltBeam' && !ef.applied) { applyDamage(ef.to, ef.dmg); ef.applied = true; }
+    if (!ef.applied && ef.dmg && (ef.type === 'boltBeam' || ef.type === 'beamHoming' || ef.type === 'flameBurst' || ef.type === 'megaBoom' || ef.type === 'netHit')) {
+      const target = ef.to || ef.target || ef.who;
+      if (target) applyDamage(target, ef.dmg, { attacker: ef.attacker });
+      ef.applied = true;
+    }
     ef.life--;
   }
   state.effects = state.effects.filter(ef => ef.life > 0);
-  // Score feedback fade
-  if (state.scoreFeedback) {
-    state.scoreFeedback.life--;
-    if (state.scoreFeedback.life <= 0) state.scoreFeedback = null;
-  }
-  // Camera shake
+  if (state.scoreFeedback) { state.scoreFeedback.life--; if (state.scoreFeedback.life <= 0) state.scoreFeedback = null; }
   if (state.shakeFrames > 0) state.shakeFrames--;
   state.flashAlpha *= 0.88;
 }
@@ -421,177 +595,235 @@ function update(dt) {
 function render() {
   const sx = state.shakeFrames > 0 ? (Math.random() - 0.5) * state.shakeAmp : 0;
   const sy = state.shakeFrames > 0 ? (Math.random() - 0.5) * state.shakeAmp : 0;
-  ctx.save();
-  ctx.translate(sx, sy);
-
-  // Background
-  const bg = ctx.createLinearGradient(0, 0, 0, 640);
-  bg.addColorStop(0, '#04060f');
-  bg.addColorStop(0.5, '#08081a');
-  bg.addColorStop(1, '#0a0420');
-  ctx.fillStyle = bg;
-  ctx.fillRect(0, 0, 960, 640);
-
-  // Grid
-  ctx.strokeStyle = 'rgba(0,255,255,0.06)';
-  ctx.lineWidth = 1;
-  for (let x = 0; x < 960; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 640); ctx.stroke(); }
-  for (let y = 0; y < 640; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(960, y); ctx.stroke(); }
-
-  // Horizon glow
-  const hg = ctx.createLinearGradient(0, 380, 0, 540);
-  hg.addColorStop(0, 'rgba(255,30,180,0.0)');
-  hg.addColorStop(1, 'rgba(255,30,180,0.18)');
-  ctx.fillStyle = hg;
-  ctx.fillRect(0, 380, 960, 160);
-
-  // Skyline silhouette
-  ctx.fillStyle = '#000';
-  for (let i = 0; i < 30; i++) {
-    const bw = 18 + (i % 7) * 6;
-    const bh = 30 + ((i * 53) % 90);
-    ctx.fillRect(i * 33, 540 - bh, bw, bh);
-  }
-  ctx.fillStyle = 'rgba(0,255,255,0.5)';
-  for (let i = 0; i < 30; i++) {
-    const bx = i * 33 + 4;
-    for (let j = 0; j < 6; j++) {
-      if (((i * 7 + j * 3 + Math.floor(state.bgPulse * 4)) % 11) === 0) {
-        ctx.fillRect(bx + (j * 3), 530 - j * 8, 1.5, 1.5);
-      }
-    }
-  }
-
-  // Players (cyber mages, silhouettes)
+  ctx.save(); ctx.translate(sx, sy);
+  drawBackground();
   drawMage(state.p1, '#7df9ff', false);
   drawMage(state.ai, '#ff44dd', true);
-
-  // Status auras
   drawStatusAuras(state.p1, '#7df9ff');
   drawStatusAuras(state.ai, '#ff44dd');
-
-  // Projectiles
+  drawTraps(state.p1);
+  drawTraps(state.ai);
   for (const pr of state.projectiles) drawProjectile(pr);
-
-  // Effects
   for (const ef of state.effects) drawEffect(ef);
-
-  // Player drawing trail
   if (state.drawTrail && state.drawTrail.length >= 2) drawTrail(state.drawTrail, '#7df9ff');
-
-  // HUD
   drawHUD();
-
-  // Score feedback
   if (state.scoreFeedback) drawScoreFeedback(state.scoreFeedback);
-
-  // Game over
+  if (state.bookOpen) drawGlyphBook();
   if (state.gameOver) drawGameOver();
-
-  // Flash overlay
-  if (state.flashAlpha > 0.01) {
-    ctx.fillStyle = `rgba(255,255,255,${state.flashAlpha})`;
-    ctx.fillRect(0, 0, 960, 640);
-  }
-
+  if (state.flashAlpha > 0.01) { ctx.fillStyle = `rgba(255,255,255,${state.flashAlpha})`; ctx.fillRect(0, 0, 960, 640); }
   ctx.restore();
 }
-
+function drawBackground() {
+  const bg = ctx.createLinearGradient(0, 0, 0, 640);
+  bg.addColorStop(0, '#04060f'); bg.addColorStop(0.5, '#08081a'); bg.addColorStop(1, '#0a0420');
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, 960, 640);
+  ctx.strokeStyle = 'rgba(0,255,255,0.06)'; ctx.lineWidth = 1;
+  for (let x = 0; x < 960; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 640); ctx.stroke(); }
+  for (let y = 0; y < 640; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(960, y); ctx.stroke(); }
+  const hg = ctx.createLinearGradient(0, 380, 0, 540);
+  hg.addColorStop(0, 'rgba(255,30,180,0.0)'); hg.addColorStop(1, 'rgba(255,30,180,0.18)');
+  ctx.fillStyle = hg; ctx.fillRect(0, 380, 960, 160);
+  ctx.fillStyle = '#000';
+  for (let i = 0; i < 30; i++) { const bw = 18 + (i % 7) * 6, bh = 30 + ((i * 53) % 90); ctx.fillRect(i * 33, 540 - bh, bw, bh); }
+  ctx.fillStyle = 'rgba(0,255,255,0.5)';
+  for (let i = 0; i < 30; i++) { const bx = i * 33 + 4; for (let j = 0; j < 6; j++) { if (((i * 7 + j * 3 + Math.floor(state.bgPulse * 4)) % 11) === 0) ctx.fillRect(bx + (j * 3), 530 - j * 8, 1.5, 1.5); } }
+}
 function drawMage(p, color, mirror) {
   const t = state.bgPulse * 2 + (mirror ? 1 : 0);
   const bob = Math.sin(t) * 3;
   const x = p.x, y = p.y + bob;
-  ctx.save();
-  ctx.translate(x, y);
+  ctx.save(); ctx.translate(x, y);
   if (mirror) ctx.scale(-1, 1);
-  // Aura
   if (p.lastCastFlash > 0) {
     const a = p.lastCastFlash / 60;
-    ctx.fillStyle = color;
-    ctx.globalAlpha = 0.15 * a;
-    ctx.beginPath(); ctx.arc(0, -30, 60, 0, Math.PI * 2); ctx.fill();
-    ctx.globalAlpha = 1;
+    ctx.fillStyle = color; ctx.globalAlpha = 0.15 * a;
+    ctx.beginPath(); ctx.arc(0, -30, 60, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
   }
-  // Body silhouette (robed mage)
   ctx.fillStyle = '#0a0a18';
   ctx.beginPath();
   ctx.moveTo(-22, 0); ctx.lineTo(-26, -50); ctx.lineTo(-18, -78);
   ctx.lineTo(-8, -90); ctx.lineTo(8, -90); ctx.lineTo(18, -78);
-  ctx.lineTo(26, -50); ctx.lineTo(22, 0); ctx.closePath();
-  ctx.fill();
-  // Hood neon outline
+  ctx.lineTo(26, -50); ctx.lineTo(22, 0); ctx.closePath(); ctx.fill();
   ctx.strokeStyle = color; ctx.lineWidth = 1.5;
-  ctx.shadowColor = color; ctx.shadowBlur = 8;
-  ctx.stroke();
-  ctx.shadowBlur = 0;
-  // Eye glow
+  ctx.shadowColor = color; ctx.shadowBlur = 8; ctx.stroke(); ctx.shadowBlur = 0;
   ctx.fillStyle = color;
   ctx.beginPath(); ctx.arc(-3, -78, 2, 0, Math.PI * 2); ctx.fill();
   ctx.beginPath(); ctx.arc(5, -78, 1.5, 0, Math.PI * 2); ctx.fill();
-  // Hand glyph orb
   ctx.shadowColor = color; ctx.shadowBlur = 12;
   ctx.fillStyle = color; ctx.globalAlpha = 0.4;
   ctx.beginPath(); ctx.arc(20, -30, 6 + Math.sin(t * 4) * 1.5, 0, Math.PI * 2); ctx.fill();
-  ctx.globalAlpha = 1;
-  ctx.shadowBlur = 0;
+  ctx.globalAlpha = 1; ctx.shadowBlur = 0;
   ctx.restore();
+  // Status icons stack
+  drawStatusBadges(p);
+}
+function drawStatusBadges(p) {
+  const items = [];
+  if (p.barrier > 0) items.push({ label: 'BAR', color: '#88ff88', t: p.barrier });
+  if (p.parry > 0) items.push({ label: 'PRY', color: '#ffdd44', t: p.parry });
+  if (p.invuln > 0) items.push({ label: 'INV', color: '#ffdd00', t: p.invuln });
+  if (p.reflectNext > 0) items.push({ label: 'RFL', color: '#aaffaa', t: 1 });
+  if (p.mirrorNext > 0) items.push({ label: 'MIR', color: '#dddddd', t: 1 });
+  if (p.doubleNext > 0) items.push({ label: 'PWR', color: '#ff8844', t: 1 });
+  if (p.halveNext > 0) items.push({ label: 'RES', color: '#ffeeaa', t: 1 });
+  if (p.burn > 0) items.push({ label: 'BRN', color: '#ff4422', t: p.burn });
+  if (p.stun > 0) items.push({ label: 'STN', color: '#88ddff', t: p.stun });
+  if (p.slowMana > 0) items.push({ label: 'SLW', color: '#88aaff', t: p.slowMana });
+  if (p.fastMana > 0) items.push({ label: 'FST', color: '#88ffaa', t: p.fastMana });
+  if (p.manaLock > 0) items.push({ label: 'LCK', color: '#ddff44', t: p.manaLock });
+  if (p.vengeance > 0) items.push({ label: 'VEN', color: '#ff0044', t: 1 });
+  if (p.traps > 0) items.push({ label: 'TR' + p.traps, color: '#ffaa00', t: 99 });
+  let bx = p.x - (items.length * 26) / 2;
+  for (const it of items) {
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(bx, p.y - 110, 24, 14);
+    ctx.strokeStyle = it.color; ctx.lineWidth = 1;
+    ctx.strokeRect(bx + 0.5, p.y - 109.5, 23, 13);
+    ctx.fillStyle = it.color; ctx.font = 'bold 8px monospace'; ctx.textAlign = 'center';
+    ctx.fillText(it.label, bx + 12, p.y - 100);
+    ctx.restore();
+    bx += 26;
+  }
 }
 function drawStatusAuras(p, color) {
   if (p.barrier > 0) {
-    const a = Math.min(1, p.barrier / 0.5);
-    ctx.strokeStyle = '#88ff88';
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#88ff88'; ctx.lineWidth = 2;
     ctx.shadowColor = '#88ff88'; ctx.shadowBlur = 14;
     ctx.globalAlpha = 0.3 + 0.2 * Math.sin(state.bgPulse * 8);
     ctx.beginPath(); ctx.arc(p.x, p.y - 40, 50, 0, Math.PI * 2); ctx.stroke();
     ctx.globalAlpha = 1; ctx.shadowBlur = 0;
   }
   if (p.parry > 0) {
-    ctx.strokeStyle = '#ffdd44';
-    ctx.lineWidth = 3;
-    ctx.shadowColor = '#ffdd44'; ctx.shadowBlur = 20;
-    ctx.globalAlpha = 0.6;
+    ctx.strokeStyle = '#ffdd44'; ctx.lineWidth = 3;
+    ctx.shadowColor = '#ffdd44'; ctx.shadowBlur = 20; ctx.globalAlpha = 0.6;
     ctx.beginPath(); ctx.arc(p.x, p.y - 40, 38 + Math.sin(state.bgPulse * 12) * 3, 0, Math.PI * 2); ctx.stroke();
     ctx.globalAlpha = 1; ctx.shadowBlur = 0;
   }
+  if (p.invuln > 0) {
+    ctx.strokeStyle = '#ffff00'; ctx.lineWidth = 4;
+    ctx.shadowColor = '#ffff00'; ctx.shadowBlur = 30; ctx.globalAlpha = 0.5;
+    ctx.beginPath(); ctx.arc(p.x, p.y - 40, 60, 0, Math.PI * 2); ctx.stroke();
+    ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+  }
+  if (p.reflectNext > 0) {
+    ctx.strokeStyle = '#aaffaa'; ctx.lineWidth = 2; ctx.setLineDash([6, 4]);
+    ctx.shadowColor = '#aaffaa'; ctx.shadowBlur = 12; ctx.globalAlpha = 0.6;
+    ctx.beginPath(); ctx.arc(p.x, p.y - 40, 55, 0, Math.PI * 2); ctx.stroke();
+    ctx.setLineDash([]); ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+  }
+  if (p.fastMana > 0) {
+    ctx.fillStyle = '#88ffaa'; ctx.shadowColor = '#88ffaa'; ctx.shadowBlur = 10;
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4 + state.bgPulse * 0.5) * Math.PI * 2;
+      ctx.globalAlpha = 0.5;
+      ctx.beginPath(); ctx.arc(p.x + Math.cos(a) * 50, p.y - 30 + Math.sin(a) * 20, 3, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+  }
+  if (p.burn > 0) {
+    ctx.fillStyle = '#ff4422'; ctx.shadowColor = '#ff4422'; ctx.shadowBlur = 12;
+    for (let i = 0; i < 5; i++) {
+      const o = i + state.bgPulse * 4;
+      ctx.globalAlpha = 0.4;
+      ctx.beginPath(); ctx.arc(p.x + Math.sin(o * 1.3) * 18, p.y - 20 - (o % 1) * 30, 4, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+  }
+  if (p.stun > 0) {
+    ctx.strokeStyle = '#88ddff'; ctx.lineWidth = 2;
+    for (let i = 0; i < 3; i++) {
+      const a = state.bgPulse * 6 + (i / 3) * Math.PI * 2;
+      ctx.beginPath(); ctx.arc(p.x + Math.cos(a) * 18, p.y - 95, 4, 0, Math.PI * 2); ctx.stroke();
+    }
+  }
+}
+function drawTraps(p) {
+  if (p.traps <= 0) return;
+  for (let i = 0; i < p.traps; i++) {
+    const tx = p.x + (p.side === 'left' ? 60 + i * 30 : -60 - i * 30);
+    const ty = 535;
+    ctx.save();
+    ctx.strokeStyle = '#ffaa00'; ctx.lineWidth = 2;
+    ctx.shadowColor = '#ffaa00'; ctx.shadowBlur = 10;
+    ctx.globalAlpha = 0.6 + Math.sin(state.bgPulse * 6 + i) * 0.3;
+    ctx.beginPath();
+    ctx.moveTo(tx - 10, ty - 10); ctx.lineTo(tx + 10, ty + 10);
+    ctx.moveTo(tx + 10, ty - 10); ctx.lineTo(tx - 10, ty + 10);
+    ctx.stroke();
+    ctx.restore();
+  }
 }
 function drawProjectile(pr) {
-  const k = pr.t / pr.dur;
-  const x = pr.x + (pr.tx - pr.x) * k;
-  const y = pr.y + (pr.ty - pr.y) * k - Math.sin(k * Math.PI) * 60; // arc
+  const k = pr.t / pr.dur, x = pr.x + (pr.tx - pr.x) * k;
+  let y = pr.y + (pr.ty - pr.y) * k;
+  if (pr.kind === 'fireball') y -= Math.sin(k * Math.PI) * 60;
   ctx.save();
   ctx.shadowColor = pr.color; ctx.shadowBlur = 24;
   ctx.fillStyle = pr.color;
-  ctx.beginPath(); ctx.arc(x, y, 12 + Math.sin(state.bgPulse * 30) * 2, 0, Math.PI * 2); ctx.fill();
+  const size = pr.kind === 'icicle' ? 6 : pr.kind === 'windblade' ? 14 : 12;
+  ctx.beginPath(); ctx.arc(x, y, size + Math.sin(state.bgPulse * 30) * 2, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = '#fff'; ctx.globalAlpha = 0.7;
-  ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(x, y, size * 0.5, 0, Math.PI * 2); ctx.fill();
   ctx.restore();
 }
 function drawEffect(ef) {
   ctx.save();
-  if (ef.type === 'boltBeam') {
-    const a = ef.life / 16;
+  if (ef.type === 'boltBeam' || ef.type === 'beamHoming') {
+    const a = ef.life / (ef.type === 'beamHoming' ? 24 : 16);
     const c = ef.from, d = ef.to;
-    ctx.strokeStyle = ef.color;
-    ctx.lineWidth = 4 + Math.random() * 6;
-    ctx.shadowColor = ef.color; ctx.shadowBlur = 24;
-    ctx.globalAlpha = a;
-    ctx.beginPath();
-    ctx.moveTo(c.x, c.y - 40);
+    ctx.strokeStyle = ef.color; ctx.lineWidth = 4 + Math.random() * 6;
+    ctx.shadowColor = ef.color; ctx.shadowBlur = 24; ctx.globalAlpha = a;
+    ctx.beginPath(); ctx.moveTo(c.x, c.y - 40);
     const segs = 6;
     for (let i = 1; i <= segs; i++) {
       const t = i / segs;
-      const x = c.x + (d.x - c.x) * t + (Math.random() - 0.5) * 30;
-      const y = (c.y - 40) + ((d.y - 30) - (c.y - 40)) * t + (Math.random() - 0.5) * 30;
+      const x = c.x + (d.x - c.x) * t + (Math.random() - 0.5) * 24;
+      const y = (c.y - 40) + ((d.y - 30) - (c.y - 40)) * t + (Math.random() - 0.5) * 24;
       ctx.lineTo(x, y);
     }
     ctx.stroke();
-  } else if (ef.type === 'explosion') {
+  } else if (ef.type === 'manaDrainBeam' || ef.type === 'lockBeam' || ef.type === 'stealBeam') {
+    const a = ef.life / (ef.type === 'manaDrainBeam' ? 20 : ef.type === 'lockBeam' ? 22 : 24);
+    const c = ef.from, d = ef.to;
+    ctx.strokeStyle = ef.type === 'stealBeam' ? '#ff44aa' : (ef.type === 'lockBeam' ? '#ddff44' : '#aa88ff');
+    ctx.lineWidth = 3; ctx.shadowColor = ctx.strokeStyle; ctx.shadowBlur = 18; ctx.globalAlpha = a;
+    ctx.setLineDash([8, 6]);
+    ctx.beginPath(); ctx.moveTo(c.x, c.y - 40); ctx.lineTo(d.x, d.y - 40); ctx.stroke();
+    ctx.setLineDash([]);
+  } else if (ef.type === 'flameBurst') {
     const a = ef.life / 22;
-    const r = ef.size * (1 - a);
+    const c = ef.from, d = ef.to;
+    ctx.strokeStyle = ef.color; ctx.lineWidth = 18 * a;
+    ctx.shadowColor = ef.color; ctx.shadowBlur = 30; ctx.globalAlpha = a;
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath(); ctx.moveTo(c.x, c.y - 40);
+    for (let i = 1; i <= 8; i++) {
+      const t = i / 8, x = c.x + (d.x - c.x) * t + (Math.random() - 0.5) * 18, y = (c.y - 40) + ((d.y - 30) - (c.y - 40)) * t + (Math.random() - 0.5) * 18;
+      ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  } else if (ef.type === 'megaBoom') {
+    const a = ef.life / 36;
+    const r = (1 - a) * 120;
+    ctx.strokeStyle = ef.color; ctx.lineWidth = 4;
+    ctx.shadowColor = ef.color; ctx.shadowBlur = 30; ctx.globalAlpha = a;
+    ctx.beginPath(); ctx.arc(ef.x, ef.y, r, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(ef.x, ef.y, r * 0.6, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = ef.color; ctx.globalAlpha = a * 0.4;
+    ctx.beginPath(); ctx.arc(ef.x, ef.y, r * 0.5, 0, Math.PI * 2); ctx.fill();
+  } else if (ef.type === 'netHit') {
+    const a = ef.life / 30;
+    ctx.strokeStyle = ef.color; ctx.lineWidth = 2;
+    ctx.shadowColor = ef.color; ctx.shadowBlur = 14; ctx.globalAlpha = a;
+    for (let i = -2; i <= 2; i++) {
+      ctx.beginPath(); ctx.moveTo(ef.who.x - 60, ef.who.y - 30 + i * 15); ctx.lineTo(ef.who.x + 60, ef.who.y - 30 + i * 15); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(ef.who.x + i * 15, ef.who.y - 90); ctx.lineTo(ef.who.x + i * 15, ef.who.y); ctx.stroke();
+    }
+  } else if (ef.type === 'explosion') {
+    const a = ef.life / 22, r = ef.size * (1 - a);
     ctx.strokeStyle = ef.color; ctx.lineWidth = 3;
-    ctx.shadowColor = ef.color; ctx.shadowBlur = 20;
-    ctx.globalAlpha = a;
+    ctx.shadowColor = ef.color; ctx.shadowBlur = 20; ctx.globalAlpha = a;
     ctx.beginPath(); ctx.arc(ef.x, ef.y, r, 0, Math.PI * 2); ctx.stroke();
     ctx.fillStyle = ef.color; ctx.globalAlpha = a * 0.4;
     ctx.beginPath(); ctx.arc(ef.x, ef.y, r * 0.6, 0, Math.PI * 2); ctx.fill();
@@ -600,43 +832,68 @@ function drawEffect(ef) {
     ctx.fillStyle = ef.color; ctx.globalAlpha = a;
     ctx.shadowColor = ef.color; ctx.shadowBlur = 18;
     ctx.beginPath(); ctx.arc(ef.x, ef.y, 25 * (1 - a), 0, Math.PI * 2); ctx.fill();
-    ctx.font = 'bold 24px monospace'; ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
-    ctx.fillText('!', ef.x, ef.y - 10);
-  } else if (ef.type === 'parryFlash') {
+  } else if (ef.type === 'parryFlash' || ef.type === 'reflectFlash' || ef.type === 'invulnFlash' || ef.type === 'vengeanceFlash') {
     const a = ef.life / 24;
-    ctx.strokeStyle = '#ffdd44'; ctx.lineWidth = 4;
-    ctx.shadowColor = '#ffdd44'; ctx.shadowBlur = 30;
-    ctx.globalAlpha = a;
+    const col = ef.type === 'parryFlash' ? '#ffdd44' : ef.type === 'reflectFlash' ? '#aaffaa' : ef.type === 'invulnFlash' ? '#ffff00' : '#ff0044';
+    const lbl = ef.type === 'parryFlash' ? 'PARRY' : ef.type === 'reflectFlash' ? 'REFLECT' : ef.type === 'invulnFlash' ? 'INVULN' : 'VENGEANCE';
+    ctx.strokeStyle = col; ctx.lineWidth = 4;
+    ctx.shadowColor = col; ctx.shadowBlur = 30; ctx.globalAlpha = a;
     ctx.beginPath(); ctx.arc(ef.who.x, ef.who.y - 40, 60 * (1 - a) + 30, 0, Math.PI * 2); ctx.stroke();
-    ctx.font = 'bold 20px monospace'; ctx.fillStyle = '#ffdd44'; ctx.textAlign = 'center';
-    ctx.fillText('PARRY!', ef.who.x, ef.who.y - 100);
+    ctx.font = 'bold 18px monospace'; ctx.fillStyle = col; ctx.textAlign = 'center';
+    ctx.fillText(lbl + '!', ef.who.x, ef.who.y - 100);
   } else if (ef.type === 'barrierHit') {
     const a = ef.life / 18;
     ctx.strokeStyle = '#88ff88'; ctx.lineWidth = 3;
-    ctx.shadowColor = '#88ff88'; ctx.shadowBlur = 25;
-    ctx.globalAlpha = a;
+    ctx.shadowColor = '#88ff88'; ctx.shadowBlur = 25; ctx.globalAlpha = a;
     ctx.beginPath(); ctx.arc(ef.who.x, ef.who.y - 40, 50, 0, Math.PI * 2); ctx.stroke();
-  } else if (ef.type === 'barrierStart') {
-    const a = ef.life / 30;
-    ctx.strokeStyle = '#88ff88'; ctx.lineWidth = 2;
-    ctx.shadowColor = '#88ff88'; ctx.shadowBlur = 18;
-    ctx.globalAlpha = a;
+  } else if (['barrierStart', 'parryStart', 'reflectStart', 'invulnStart', 'mirrorStart', 'powerStart', 'resAura', 'sigilAura', 'cleanseAura', 'windAura', 'slowAura', 'vengeanceStart'].includes(ef.type)) {
+    const a = ef.life / (ef.type === 'sigilAura' ? 60 : 30);
+    const col = ef.type === 'barrierStart' ? '#88ff88' :
+      ef.type === 'parryStart' ? '#ffdd44' :
+      ef.type === 'reflectStart' ? '#aaffaa' :
+      ef.type === 'invulnStart' ? '#ffff00' :
+      ef.type === 'mirrorStart' ? '#dddddd' :
+      ef.type === 'powerStart' ? '#ff8844' :
+      ef.type === 'resAura' ? '#ffeeaa' :
+      ef.type === 'sigilAura' ? '#ffaa44' :
+      ef.type === 'cleanseAura' ? '#ddffdd' :
+      ef.type === 'windAura' ? '#88ffaa' :
+      ef.type === 'slowAura' ? '#88aaff' : '#ff0044';
+    ctx.strokeStyle = col; ctx.lineWidth = 2;
+    ctx.shadowColor = col; ctx.shadowBlur = 18; ctx.globalAlpha = a;
     ctx.beginPath(); ctx.arc(ef.who.x, ef.who.y - 40, 50 + (1 - a) * 30, 0, Math.PI * 2); ctx.stroke();
-  } else if (ef.type === 'parryStart') {
-    const a = ef.life / 30;
-    ctx.strokeStyle = '#ffdd44'; ctx.lineWidth = 2;
-    ctx.shadowColor = '#ffdd44'; ctx.shadowBlur = 18;
-    ctx.globalAlpha = a;
-    ctx.beginPath(); ctx.arc(ef.who.x, ef.who.y - 40, 38 + (1 - a) * 24, 0, Math.PI * 2); ctx.stroke();
+  } else if (ef.type === 'tpFlash') {
+    const a = ef.life / 18;
+    ctx.fillStyle = '#cc88ff'; ctx.shadowColor = '#cc88ff'; ctx.shadowBlur = 20; ctx.globalAlpha = a;
+    ctx.beginPath(); ctx.arc(ef.who.x, ef.who.y - 40, 30 * (1 - a) + 20, 0, Math.PI * 2); ctx.fill();
   } else if (ef.type === 'healAura') {
     const a = ef.life / 50;
     ctx.fillStyle = '#ff44dd'; ctx.shadowColor = '#ff44dd'; ctx.shadowBlur = 18;
     for (let i = 0; i < 6; i++) {
-      const ang = (i / 6 + state.bgPulse * 0.3) * Math.PI * 2;
-      const rr = 30 + (1 - a) * 30;
+      const ang = (i / 6 + state.bgPulse * 0.3) * Math.PI * 2, rr = 30 + (1 - a) * 30;
       ctx.globalAlpha = a;
       ctx.beginPath(); ctx.arc(ef.who.x + Math.cos(ang) * rr, ef.who.y - 40 + Math.sin(ang) * rr * 0.6, 4, 0, Math.PI * 2); ctx.fill();
     }
+  } else if (ef.type === 'trapPlace') {
+    const a = ef.life / 40;
+    ctx.strokeStyle = '#ffaa00'; ctx.lineWidth = 2;
+    ctx.shadowColor = '#ffaa00'; ctx.shadowBlur = 14; ctx.globalAlpha = a;
+    ctx.beginPath(); ctx.arc(ef.who.x, 535, 30 * (1 - a) + 8, 0, Math.PI * 2); ctx.stroke();
+  } else if (ef.type === 'trapBoom') {
+    const a = ef.life / 30, r = (1 - a) * 80;
+    ctx.strokeStyle = ef.color; ctx.lineWidth = 4;
+    ctx.shadowColor = ef.color; ctx.shadowBlur = 26; ctx.globalAlpha = a;
+    ctx.beginPath(); ctx.arc(ef.x, ef.y, r, 0, Math.PI * 2); ctx.stroke();
+  } else if (ef.type === 'burnTick') {
+    const a = ef.life / 14;
+    ctx.fillStyle = '#ff4422'; ctx.font = 'bold 14px monospace'; ctx.textAlign = 'center';
+    ctx.globalAlpha = a; ctx.shadowColor = '#ff4422'; ctx.shadowBlur = 8;
+    ctx.fillText('BURN', ef.who.x, ef.who.y - 110 - (1 - a) * 20);
+  } else if (ef.type === 'unfire') {
+    const a = ef.life / 16;
+    ctx.fillStyle = '#a44'; ctx.font = '12px monospace'; ctx.textAlign = 'center';
+    ctx.globalAlpha = a;
+    ctx.fillText('NO TRAP', ef.who.x, ef.who.y - 100);
   }
   ctx.restore();
 }
@@ -644,27 +901,20 @@ function drawTrail(pts, color) {
   ctx.save();
   ctx.shadowColor = color; ctx.shadowBlur = 16;
   ctx.strokeStyle = color; ctx.lineWidth = 5; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  ctx.beginPath();
-  ctx.moveTo(pts[0].x, pts[0].y);
+  ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
   for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
   ctx.stroke();
-  // Inner bright core
-  ctx.shadowBlur = 0;
-  ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.moveTo(pts[0].x, pts[0].y);
+  ctx.shadowBlur = 0; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
   for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
   ctx.stroke();
   ctx.restore();
 }
 function drawHUD() {
-  // P1 HP/Mana (top left)
   drawBar(20, 20, 360, 18, state.p1.hp / state.p1.hpMax, '#ff4488', '1P · HP', state.p1.hp);
   drawBar(20, 44, 360, 10, state.p1.mana / state.p1.manaMax, '#7df9ff', 'MANA', state.p1.mana);
-  // AI HP/Mana (top right)
   drawBar(580, 20, 360, 18, state.ai.hp / state.ai.hpMax, '#ff4488', 'AI · HP', state.ai.hp, true);
   drawBar(580, 44, 360, 10, state.ai.mana / state.ai.manaMax, '#ff44dd', 'MANA', state.ai.mana, true);
-  // Timer
   const sec = Math.max(0, Math.ceil(state.matchTime));
   ctx.font = 'bold 36px monospace'; ctx.textAlign = 'center';
   ctx.fillStyle = sec <= 10 ? '#ff4488' : '#7df9ff';
@@ -672,94 +922,110 @@ function drawHUD() {
   ctx.fillText(String(sec).padStart(2, '0'), 480, 50);
   ctx.shadowBlur = 0;
   ctx.font = '10px monospace'; ctx.fillStyle = '#566';
-  ctx.fillText('TIME', 480, 64);
-  // Glyph reference (bottom)
-  drawGlyphReference();
+  ctx.fillText('TIME · TAB FOR GLYPHS', 480, 64);
 }
 function drawBar(x, y, w, h, ratio, color, label, val, mirror) {
   ctx.save();
-  // Frame
-  ctx.fillStyle = 'rgba(0,0,0,0.5)';
-  ctx.fillRect(x, y, w, h);
-  ctx.strokeStyle = '#244'; ctx.lineWidth = 1;
-  ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
-  // Fill
+  ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = '#244'; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
   const fw = Math.max(0, Math.min(1, ratio)) * (w - 2);
-  ctx.fillStyle = color;
-  ctx.shadowColor = color; ctx.shadowBlur = 8;
+  ctx.fillStyle = color; ctx.shadowColor = color; ctx.shadowBlur = 8;
   if (mirror) ctx.fillRect(x + (w - 1 - fw), y + 1, fw, h - 2);
   else ctx.fillRect(x + 1, y + 1, fw, h - 2);
   ctx.shadowBlur = 0;
-  // Label
-  ctx.font = 'bold 11px monospace'; ctx.fillStyle = '#aaa';
-  ctx.textAlign = mirror ? 'right' : 'left';
+  ctx.font = 'bold 11px monospace'; ctx.fillStyle = '#aaa'; ctx.textAlign = mirror ? 'right' : 'left';
   ctx.fillText(label, mirror ? x + w : x, y - 4);
-  ctx.fillStyle = '#fff';
-  ctx.fillText(Math.round(val), mirror ? x : x + w, y - 4);
+  ctx.fillStyle = '#fff'; ctx.fillText(Math.round(val), mirror ? x : x + w, y - 4);
   ctx.restore();
 }
-function drawGlyphReference() {
-  const y = 580;
-  const w = 170, gap = 8;
-  const total = w * 5 + gap * 4;
-  let x = (960 - total) / 2;
-  ctx.font = '10px monospace';
-  for (const id of GLYPH_ORDER) {
-    const g = GLYPHS[id];
-    const have = state.p1.mana >= g.mana;
-    ctx.fillStyle = 'rgba(0,0,0,0.6)';
-    ctx.fillRect(x, y, w, 50);
-    ctx.strokeStyle = have ? g.color : '#333';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, 49);
+function drawScoreFeedback(sf) {
+  const a = Math.min(1, sf.life / 30);
+  const def = sf.glyphId ? G[sf.glyphId] : null;
+  const tc = tierColor(sf.tier);
+  const baseY = 110, baseX = sf.caster === 'p1' ? 140 : 820;
+  ctx.save(); ctx.globalAlpha = a;
+  ctx.font = 'bold 22px monospace'; ctx.textAlign = 'center';
+  ctx.fillStyle = tc; ctx.shadowColor = tc; ctx.shadowBlur = 14;
+  ctx.fillText(Math.round(sf.score * 100) + '%', baseX, baseY);
+  ctx.font = 'bold 13px monospace'; ctx.fillStyle = '#fff';
+  ctx.fillText(sf.tier.toUpperCase() + (sf.fired ? '' : ' · ' + (sf.reason || '')), baseX, baseY + 18);
+  if (def) { ctx.fillStyle = def.color; ctx.fillText(def.ja, baseX, baseY + 36); }
+  ctx.shadowBlur = 0; ctx.restore();
+}
+function drawGlyphBook() {
+  ctx.fillStyle = 'rgba(0,0,0,0.92)'; ctx.fillRect(0, 0, 960, 640);
+  ctx.font = 'bold 22px monospace'; ctx.textAlign = 'center';
+  ctx.fillStyle = '#7df9ff'; ctx.shadowColor = '#7df9ff'; ctx.shadowBlur = 14;
+  ctx.fillText('GLYPH BOOK · 30 GLYPHS', 480, 36);
+  ctx.shadowBlur = 0;
+  ctx.font = '10px monospace'; ctx.fillStyle = '#666';
+  ctx.fillText('TAB or ESC to close', 480, 54);
+  // Grid: 6 cols × 5 rows
+  const cols = 6, rows = 5, cellW = 145, cellH = 100, startX = (960 - cols * cellW) / 2, startY = 80;
+  for (let i = 0; i < G_ORDER.length; i++) {
+    const id = G_ORDER[i], g = G[id];
+    const cx = startX + (i % cols) * cellW, cy = startY + Math.floor(i / cols) * cellH;
+    ctx.fillStyle = 'rgba(20,20,30,0.8)'; ctx.fillRect(cx + 2, cy + 2, cellW - 4, cellH - 4);
+    ctx.strokeStyle = g.color; ctx.lineWidth = 1; ctx.strokeRect(cx + 2.5, cy + 2.5, cellW - 5, cellH - 5);
     // Mini icon
-    ctx.save();
-    ctx.translate(x + 22, y + 25);
-    ctx.strokeStyle = have ? g.color : '#444';
-    ctx.lineWidth = 1.6;
-    ctx.shadowColor = have ? g.color : 'transparent'; ctx.shadowBlur = have ? 6 : 0;
+    ctx.save(); ctx.translate(cx + 22, cy + 26);
+    ctx.strokeStyle = g.color; ctx.lineWidth = 1.6;
+    ctx.shadowColor = g.color; ctx.shadowBlur = 6;
     drawGlyphIcon(g.shape, 14);
     ctx.restore();
     // Text
-    ctx.fillStyle = have ? '#fff' : '#666'; ctx.textAlign = 'left';
-    ctx.font = 'bold 11px monospace';
-    ctx.fillText(g.nameJa, x + 44, y + 18);
-    ctx.font = '9px monospace'; ctx.fillStyle = have ? '#aaa' : '#555';
-    ctx.fillText(g.nameEn.toUpperCase(), x + 44, y + 30);
-    ctx.fillStyle = have ? g.color : '#555';
-    ctx.fillText('MANA ' + g.mana, x + 44, y + 42);
-    x += w + gap;
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 12px monospace';
+    ctx.fillText(g.ja, cx + 44, cy + 22);
+    ctx.fillStyle = '#888'; ctx.font = '8px monospace';
+    ctx.fillText(g.en.toUpperCase(), cx + 44, cy + 32);
+    ctx.fillStyle = CAT_COLOR[g.cat]; ctx.font = '8px monospace';
+    ctx.fillText(CAT_LABEL_JA[g.cat] + ' · ' + g.syn.toUpperCase(), cx + 8, cy + 56);
+    ctx.fillStyle = '#ccc'; ctx.font = '9px monospace';
+    const desc = g.desc.length > 26 ? g.desc.slice(0, 26) + '…' : g.desc;
+    ctx.fillText(desc, cx + 8, cy + 70);
+    ctx.fillStyle = g.color; ctx.font = 'bold 9px monospace';
+    ctx.fillText('MANA ' + g.mana + (g.dmg ? '  DMG ' + g.dmg : ''), cx + 8, cy + 86);
   }
 }
 function drawGlyphIcon(shape, s) {
   ctx.beginPath();
-  if (shape === 'zigzag') { ctx.moveTo(-s, -s/2); ctx.lineTo(-s/3, s/3); ctx.lineTo(s/3, -s/3); ctx.lineTo(s, s/2); ctx.stroke(); }
-  else if (shape === 'circle') { ctx.arc(0, 0, s * 0.85, 0, Math.PI * 2); ctx.stroke(); }
-  else if (shape === 'triangle') { ctx.moveTo(0, -s); ctx.lineTo(s, s * 0.7); ctx.lineTo(-s, s * 0.7); ctx.closePath(); ctx.stroke(); }
-  else if (shape === 'check') { ctx.moveTo(-s, 0); ctx.lineTo(-s/4, s/2); ctx.lineTo(s, -s); ctx.stroke(); }
-  else if (shape === 'rect') { ctx.rect(-s, -s * 0.7, 2 * s, 1.4 * s); ctx.stroke(); }
-}
-function drawScoreFeedback(sf) {
-  const a = Math.min(1, sf.life / 30);
-  const def = sf.glyphId ? GLYPHS[sf.glyphId] : null;
-  const tc = tierColor(sf.tier);
-  const baseY = sf.caster === 'p1' ? 110 : 110;
-  const baseX = sf.caster === 'p1' ? 140 : 820;
-  ctx.save();
-  ctx.globalAlpha = a;
-  ctx.font = 'bold 22px monospace'; ctx.textAlign = 'center';
-  ctx.fillStyle = tc; ctx.shadowColor = tc; ctx.shadowBlur = 14;
-  const pct = Math.round(sf.score * 100) + '%';
-  ctx.fillText(pct, baseX, baseY);
-  ctx.font = 'bold 13px monospace'; ctx.fillStyle = '#fff';
-  ctx.fillText(sf.tier.toUpperCase() + (sf.fired ? '' : ' · ' + (sf.reason || '')), baseX, baseY + 18);
-  if (def) { ctx.fillStyle = def.color; ctx.fillText(def.nameJa, baseX, baseY + 36); }
-  ctx.shadowBlur = 0;
-  ctx.restore();
+  switch (shape) {
+    case 'zigzag':      ctx.moveTo(-s, -s/2); ctx.lineTo(-s/3, s/3); ctx.lineTo(s/3, -s/3); ctx.lineTo(s, s/2); ctx.stroke(); break;
+    case 'circle':      ctx.arc(0, 0, s * 0.85, 0, Math.PI * 2); ctx.stroke(); break;
+    case 'triangle':    ctx.moveTo(0, -s); ctx.lineTo(s, s * 0.7); ctx.lineTo(-s, s * 0.7); ctx.closePath(); ctx.stroke(); break;
+    case 'invTriangle': ctx.moveTo(0, s); ctx.lineTo(s, -s * 0.7); ctx.lineTo(-s, -s * 0.7); ctx.closePath(); ctx.stroke(); break;
+    case 'check':       ctx.moveTo(-s, 0); ctx.lineTo(-s/4, s/2); ctx.lineTo(s, -s); ctx.stroke(); break;
+    case 'rect':        ctx.rect(-s, -s * 0.7, 2 * s, 1.4 * s); ctx.stroke(); break;
+    case 'v':           ctx.moveTo(-s, -s/2); ctx.lineTo(0, s); ctx.lineTo(s, -s/2); ctx.stroke(); break;
+    case 'crescent':    ctx.arc(0, 0, s, Math.PI * 0.2, Math.PI * 0.8); ctx.stroke(); break;
+    case 'twoLines':    ctx.moveTo(-s, -s/3); ctx.lineTo(s, -s/3); ctx.moveTo(s, s/3); ctx.lineTo(-s, s/3); ctx.stroke(); break;
+    case 'spiral':      for (let i = 0; i <= 25; i++) { const a = i * 0.4, r = (i / 25) * s; if (i === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r); else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); } ctx.stroke(); break;
+    case 'spiralOut':   for (let i = 0; i <= 25; i++) { const a = i * 0.5, r = 2 + (i / 25) * s; if (i === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r); else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); } ctx.stroke(); break;
+    case 'grid':        ctx.moveTo(-s, -s); ctx.lineTo(s, -s); ctx.lineTo(s, 0); ctx.lineTo(-s, 0); ctx.lineTo(-s, s); ctx.lineTo(s, s); ctx.stroke(); break;
+    case 'longWave':    ctx.moveTo(-s, 0); for (let i = 1; i <= 6; i++) ctx.lineTo(-s + (i / 6) * 2 * s, ((i % 2) - 0.5) * s); ctx.stroke(); break;
+    case 'x':           ctx.moveTo(-s, -s); ctx.lineTo(s, s); ctx.moveTo(s, -s); ctx.lineTo(-s, s); ctx.stroke(); break;
+    case 'doubleTri':   ctx.moveTo(-s, s); ctx.lineTo(-s/2, -s); ctx.lineTo(0, s); ctx.lineTo(s/2, -s); ctx.lineTo(s, s); ctx.stroke(); break;
+    case 'wave':        ctx.moveTo(-s, 0); for (let i = 1; i <= 4; i++) ctx.lineTo(-s + (i / 4) * 2 * s, Math.sin(i * Math.PI / 2) * s * 0.6); ctx.stroke(); break;
+    case 'figure8':     for (let i = 0; i <= 30; i++) { const t = (i / 30) * Math.PI * 2; const x = Math.cos(t) * s; const y = Math.sin(t * 2) * s * 0.5; if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); } ctx.stroke(); break;
+    case 'star':        for (let i = 0; i <= 10; i++) { const a = (i / 10) * Math.PI * 2 - Math.PI / 2, r = i % 2 === 0 ? s : s * 0.4; if (i === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r); else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); } ctx.stroke(); break;
+    case 'arrow':       ctx.moveTo(s, 0); ctx.lineTo(-s, 0); ctx.moveTo(-s, 0); ctx.lineTo(-s/2, -s/2); ctx.moveTo(-s, 0); ctx.lineTo(-s/2, s/2); ctx.stroke(); break;
+    case 'upTriangle':  ctx.moveTo(0, -s); ctx.lineTo(s, s/2); ctx.lineTo(-s, s/2); ctx.closePath(); ctx.stroke(); break;
+    case 'dot':         ctx.arc(0, 0, 3, 0, Math.PI * 2); ctx.fill(); break;
+    case 'shortWave':   ctx.moveTo(-s, 0); ctx.quadraticCurveTo(-s/2, -s, 0, 0); ctx.quadraticCurveTo(s/2, s, s, 0); ctx.stroke(); break;
+    case 'clock':       ctx.arc(0, 0, s * 0.7, 0, Math.PI * 2); ctx.moveTo(0, 0); ctx.lineTo(s * 0.5, 0); ctx.stroke(); break;
+    case 'narrowZ':     ctx.moveTo(-s/2, -s); ctx.lineTo(s/2, -s); ctx.lineTo(-s/2, s); ctx.lineTo(s/2, s); ctx.stroke(); break;
+    case 'xMark':       ctx.moveTo(-s/2, -s/2); ctx.lineTo(s/2, s/2); ctx.moveTo(-s/2, s/2); ctx.lineTo(s/2, -s/2); ctx.stroke(); break;
+    case 'shortLine':   ctx.moveTo(-s/2, 0); ctx.lineTo(s/2, 0); ctx.stroke(); break;
+    case 'pentagon':    for (let i = 0; i <= 5; i++) { const a = (i / 5) * Math.PI * 2 - Math.PI / 2; if (i === 0) ctx.moveTo(Math.cos(a) * s, Math.sin(a) * s); else ctx.lineTo(Math.cos(a) * s, Math.sin(a) * s); } ctx.stroke(); break;
+    case 'whirl':       for (let i = 0; i <= 25; i++) { const a = i * 0.6, r = s - (i / 25) * s; if (i === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r); else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); } ctx.stroke(); break;
+    case 'omega':       ctx.moveTo(-s, s); ctx.lineTo(-s/2, -s/2); ctx.lineTo(s/2, -s/2); ctx.lineTo(s, s); ctx.stroke(); break;
+    case 'teardrop':    ctx.moveTo(0, -s); ctx.bezierCurveTo(s, 0, s/2, s, 0, s); ctx.bezierCurveTo(-s/2, s, -s, 0, 0, -s); ctx.stroke(); break;
+    default:            ctx.arc(0, 0, s * 0.5, 0, Math.PI * 2); ctx.stroke();
+  }
 }
 function drawGameOver() {
-  ctx.fillStyle = 'rgba(0,0,0,0.7)';
-  ctx.fillRect(0, 0, 960, 640);
+  ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(0, 0, 960, 640);
   const won = state.winner === 'p1';
   ctx.font = 'bold 80px monospace'; ctx.textAlign = 'center';
   ctx.fillStyle = won ? '#7df9ff' : '#ff44dd';
@@ -767,7 +1033,7 @@ function drawGameOver() {
   ctx.fillText(won ? 'VICTORY' : 'DEFEAT', 480, 280);
   ctx.shadowBlur = 0;
   ctx.font = 'bold 22px monospace'; ctx.fillStyle = '#fff';
-  ctx.fillText(`${state.p1.hp} HP   vs   ${state.ai.hp} HP`, 480, 330);
+  ctx.fillText(`${Math.round(state.p1.hp)} HP   vs   ${Math.round(state.ai.hp)} HP`, 480, 330);
   ctx.font = '14px monospace'; ctx.fillStyle = '#aaa';
   ctx.fillText('SPACE / ENTER TO RESTART', 480, 400);
 }
@@ -777,11 +1043,9 @@ function drawGameOver() {
 // ═══════════════════════════════════════════════════════════
 let lastT = performance.now();
 function loop(t) {
-  let dt = (t - lastT) / 1000;
-  if (dt > 0.1) dt = 0.1;
+  let dt = (t - lastT) / 1000; if (dt > 0.1) dt = 0.1;
   lastT = t;
-  update(dt);
-  render();
+  update(dt); render();
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
