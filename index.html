@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>GLYPH DUEL — Sprint 1</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
+  html, body { background: #000; height: 100vh; overflow: hidden; touch-action: none; font-family: 'SF Mono', Menlo, monospace; }
+  body { display: flex; justify-content: center; align-items: center; }
+  canvas { display: block; touch-action: none; cursor: crosshair; image-rendering: auto; box-shadow: 0 0 80px rgba(0,255,255,0.15); }
+  .hint { position: fixed; bottom: 6px; left: 50%; transform: translateX(-50%); color: #244; font: 10px monospace; pointer-events: none; letter-spacing: 1px; }
+</style>
+</head>
+<body>
+<canvas id="game" width="960" height="640"></canvas>
+<div class="hint">DRAW WITH MOUSE OR FINGER · SPACE TO RESTART</div>
+<script>
+'use strict';
+
+// ═══════════════════════════════════════════════════════════
+// CANVAS
+// ═══════════════════════════════════════════════════════════
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+function resize() {
+  const sc = Math.min(window.innerWidth / 960, window.innerHeight / 640);
+  canvas.style.width = (960 * sc) + 'px';
+  canvas.style.height = (640 * sc) + 'px';
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ═══════════════════════════════════════════════════════════
+// $1 UNISTROKE RECOGNIZER (Wobbrock et al. 2007, simplified)
+// ═══════════════════════════════════════════════════════════
+const N_RESAMPLE = 64;
+const SQ_SIZE = 250;
+const PHI = 0.5 * (-1 + Math.sqrt(5));
+const ANGLE_RANGE = 45 * (Math.PI / 180);
+const ANGLE_PRECISION = 2 * (Math.PI / 180);
+const HALF_DIAGONAL = 0.5 * Math.sqrt(SQ_SIZE * SQ_SIZE * 2);
+
+function pathLen(pts) {
+  let d = 0;
+  for (let i = 1; i < pts.length; i++) d += Math.hypot(pts[i].x - pts[i-1].x, pts[i].y - pts[i-1].y);
+  return d;
+}
+function pathDist(a, b) {
+  let d = 0;
+  for (let i = 0; i < a.length; i++) d += Math.hypot(a[i].x - b[i].x, a[i].y - b[i].y);
+  return d / a.length;
+}
+function centroid(pts) {
+  let x = 0, y = 0;
+  for (const p of pts) { x += p.x; y += p.y; }
+  return { x: x / pts.length, y: y / pts.length };
+}
+function resample(pts, n) {
+  if (pts.length < 2) return pts.slice();
+  pts = pts.slice();
+  const I = pathLen(pts) / (n - 1);
+  let D = 0;
+  const out = [pts[0]];
+  for (let i = 1; i < pts.length; i++) {
+    const d = Math.hypot(pts[i].x - pts[i-1].x, pts[i].y - pts[i-1].y);
+    if (D + d >= I && d > 0) {
+      const t = (I - D) / d;
+      const q = { x: pts[i-1].x + t * (pts[i].x - pts[i-1].x), y: pts[i-1].y + t * (pts[i].y - pts[i-1].y) };
+      out.push(q); pts.splice(i, 0, q); D = 0;
+    } else { D += d; }
+  }
+  while (out.length < n) out.push(pts[pts.length - 1]);
+  return out;
+}
+function rotateBy(pts, theta) {
+  const c = centroid(pts), cs = Math.cos(theta), sn = Math.sin(theta);
+  return pts.map(p => ({ x: (p.x - c.x) * cs - (p.y - c.y) * sn + c.x, y: (p.x - c.x) * sn + (p.y - c.y) * cs + c.y }));
+}
+function indicativeAngle(pts) { const c = centroid(pts); return Math.atan2(c.y - pts[0].y, c.x - pts[0].x); }
+function scaleTo(pts, size) {
+  let mnx = Infinity, mxx = -Infinity, mny = Infinity, mxy = -Infinity;
+  for (const p of pts) { if (p.x < mnx) mnx = p.x; if (p.x > mxx) mxx = p.x; if (p.y < mny) mny = p.y; if (p.y > mxy) mxy = p.y; }
+  const w = mxx - mnx || 1, h = mxy - mny || 1;
+  return pts.map(p => ({ x: p.x * size / w, y: p.y * size / h }));
+}
+function translateTo(pts, target) { const c = centroid(pts); return pts.map(p => ({ x: p.x + target.x - c.x, y: p.y + target.y - c.y })); }
+function distAtAngle(pts, T, theta) { return pathDist(rotateBy(pts, theta), T); }
+function distAtBestAngle(pts, T, a, b, thresh) {
+  let x1 = PHI * a + (1 - PHI) * b, f1 = distAtAngle(pts, T, x1);
+  let x2 = (1 - PHI) * a + PHI * b, f2 = distAtAngle(pts, T, x2);
+  while (Math.abs(b - a) > thresh) {
+    if (f1 < f2) { b = x2; x2 = x1; f2 = f1; x1 = PHI * a + (1 - PHI) * b; f1 = distAtAngle(pts, T, x1); }
+    else { a = x1; x1 = x2; f1 = f2; x2 = (1 - PHI) * a + PHI * b; f2 = distAtAngle(pts, T, x2); }
+  }
+  return Math.min(f1, f2);
+}
+function preprocess(raw) {
+  let p = resample(raw, N_RESAMPLE);
+  p = rotateBy(p, -indicativeAngle(p));
+  p = scaleTo(p, SQ_SIZE);
+  p = translateTo(p, { x: 0, y: 0 });
+  return p;
+}
+const TEMPLATES = [];
+function registerTemplate(name, raw) { TEMPLATES.push({ name, points: preprocess(raw) }); }
+function recognize(raw) {
+  if (raw.length < 5) return { name: null, score: 0 };
+  const cand = preprocess(raw);
+  let best = Infinity, bestName = null;
+  for (const t of TEMPLATES) {
+    const d = distAtBestAngle(cand, t.points, -ANGLE_RANGE, ANGLE_RANGE, ANGLE_PRECISION);
+    if (d < best) { best = d; bestName = t.name; }
+  }
+  return { name: bestName, score: Math.max(0, 1 - best / HALF_DIAGONAL) };
+}
+
+// ═══════════════════════════════════════════════════════════
+// GLYPH TEMPLATES (5 unistroke shapes)
+// ═══════════════════════════════════════════════════════════
+function circlePts(cx, cy, r, n) {
+  const out = [];
+  for (let i = 0; i <= n; i++) { const a = (i / n) * Math.PI * 2 - Math.PI / 2; out.push({ x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r }); }
+  return out;
+}
+registerTemplate('bolt',     [{x:0,y:0},{x:60,y:40},{x:120,y:0},{x:180,y:60},{x:240,y:30},{x:300,y:90}]);
+registerTemplate('fireball', circlePts(100, 100, 80, 24));
+registerTemplate('barrier',  [{x:100,y:0},{x:0,y:200},{x:200,y:200},{x:100,y:0}]);
+registerTemplate('heal',     [{x:0,y:80},{x:35,y:130},{x:80,y:60},{x:200,y:0}]);
+registerTemplate('parry',    [{x:0,y:0},{x:200,y:0},{x:200,y:120},{x:0,y:120},{x:0,y:0}]);
+
+// ═══════════════════════════════════════════════════════════
+// GLYPH DEFINITIONS
+// ═══════════════════════════════════════════════════════════
+const GLYPHS = {
+  bolt:     { id: 'bolt',     nameJa: '雷撃',   nameEn: 'Bolt',     mana: 25, dmg: 15, color: '#7df9ff', shape: 'zigzag' },
+  fireball: { id: 'fireball', nameJa: '火球',   nameEn: 'Fireball', mana: 35, dmg: 22, color: '#ff8844', shape: 'circle' },
+  barrier:  { id: 'barrier',  nameJa: '結界',   nameEn: 'Barrier',  mana: 30, dmg: 0,  color: '#88ff88', shape: 'triangle' },
+  heal:     { id: 'heal',     nameJa: '治癒',   nameEn: 'Heal',     mana: 40, dmg: 0,  color: '#ff44dd', shape: 'check' },
+  parry:    { id: 'parry',    nameJa: 'パリィ', nameEn: 'Parry',    mana: 20, dmg: 0,  color: '#ffdd44', shape: 'rect' },
+};
+const GLYPH_ORDER = ['bolt', 'fireball', 'barrier', 'heal', 'parry'];
+
+// ═══════════════════════════════════════════════════════════
+// GAME STATE
+// ═══════════════════════════════════════════════════════════
+const initialState = () => ({
+  p1: { hp: 100, mana: 100, manaMax: 100, hpMax: 100, side: 'left',  x: 130, y: 480, name: '1P', barrier: 0, parry: 0, lastCast: null, lastCastFlash: 0 },
+  ai: { hp: 100, mana: 100, manaMax: 100, hpMax: 100, side: 'right', x: 830, y: 480, name: 'AI', barrier: 0, parry: 0, lastCast: null, lastCastFlash: 0 },
+  matchTime: 90.0,
+  gameOver: false,
+  winner: null,
+  effects: [],            // visual effects (projectiles, hits, auras)
+  projectiles: [],        // moving projectiles with damage
+  scoreFeedback: null,    // { tier, glyphId, score, life }
+  drawTrail: [],
+  bgPulse: 0,
+  shakeFrames: 0,
+  shakeAmp: 0,
+  flashAlpha: 0,
+});
+let state = initialState();
+let aiCastCooldown = 2.5;
+
+// ═══════════════════════════════════════════════════════════
+// AUDIO (Web Audio simple beeps)
+// ═══════════════════════════════════════════════════════════
+const AC = window.AudioContext || window.webkitAudioContext;
+const ac = AC ? new AC() : null;
+let drawTone = null;
+function ensureAudio() { if (ac && ac.state === 'suspended') ac.resume(); }
+function startDrawTone() {
+  if (!ac) return;
+  ensureAudio();
+  if (drawTone) return;
+  const o = ac.createOscillator(), g = ac.createGain();
+  o.type = 'sawtooth'; o.frequency.value = 220;
+  g.gain.value = 0.0; g.gain.linearRampToValueAtTime(0.04, ac.currentTime + 0.05);
+  o.connect(g); g.connect(ac.destination); o.start();
+  drawTone = { o, g };
+}
+function stopDrawTone() {
+  if (!drawTone || !ac) return;
+  const { o, g } = drawTone;
+  g.gain.cancelScheduledValues(ac.currentTime);
+  g.gain.linearRampToValueAtTime(0, ac.currentTime + 0.05);
+  setTimeout(() => { try { o.stop(); } catch (e) {} }, 80);
+  drawTone = null;
+}
+function beep(freq, dur, type, vol) {
+  if (!ac) return;
+  ensureAudio();
+  const o = ac.createOscillator(), g = ac.createGain();
+  o.type = type || 'sine'; o.frequency.value = freq;
+  const v = vol == null ? 0.12 : vol;
+  g.gain.setValueAtTime(0, ac.currentTime);
+  g.gain.linearRampToValueAtTime(v, ac.currentTime + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + dur);
+  o.connect(g); g.connect(ac.destination); o.start(); o.stop(ac.currentTime + dur);
+}
+function fireSE(glyphId, tier) {
+  const map = { bolt: 880, fireball: 220, barrier: 440, heal: 660, parry: 1200 };
+  const f = map[glyphId] || 500;
+  if (tier === 'critical') { beep(f * 2, 0.18, 'square', 0.18); beep(f, 0.30, 'sawtooth', 0.10); }
+  else if (tier === 'normal') beep(f, 0.18, 'square', 0.12);
+  else if (tier === 'weak') beep(f * 0.5, 0.10, 'triangle', 0.06);
+}
+function hitSE() { beep(80, 0.15, 'sawtooth', 0.18); beep(160, 0.06, 'square', 0.10); }
+function unfireSE() { beep(120, 0.05, 'square', 0.04); }
+
+// ═══════════════════════════════════════════════════════════
+// SCORING TIERS
+// ═══════════════════════════════════════════════════════════
+function scoreToTier(score) {
+  if (score < 0.30) return 'unfire';
+  if (score < 0.60) return 'weak';
+  if (score < 0.85) return 'normal';
+  return 'critical';
+}
+function tierMult(tier) { return tier === 'weak' ? 0.5 : tier === 'critical' ? 1.5 : 1.0; }
+function tierColor(tier) { return tier === 'critical' ? '#ffdd44' : tier === 'normal' ? '#7df9ff' : tier === 'weak' ? '#888' : '#a44'; }
+
+// ═══════════════════════════════════════════════════════════
+// CAST RESOLUTION
+// ═══════════════════════════════════════════════════════════
+function applyDamage(target, dmg) {
+  if (target.parry > 0) { target.parry = 0; pushEffect({ type: 'parryFlash', who: target, life: 24 }); return 0; }
+  if (target.barrier > 0) { pushEffect({ type: 'barrierHit', who: target, life: 18 }); return 0; }
+  target.hp = Math.max(0, target.hp - dmg);
+  state.shakeFrames = 12; state.shakeAmp = 6;
+  state.flashAlpha = 0.18;
+  hitSE();
+  pushEffect({ type: 'hit', x: target.x, y: target.y - 30, life: 24, color: '#ff4488' });
+  if (target.hp <= 0 && !state.gameOver) endMatch(target === state.p1 ? 'ai' : 'p1');
+  return dmg;
+}
+function castGlyph(casterKey, glyphId, score, tier) {
+  const caster = state[casterKey];
+  const otherKey = casterKey === 'p1' ? 'ai' : 'p1';
+  const target = state[otherKey];
+  const def = GLYPHS[glyphId];
+  if (!def) return;
+  if (caster.mana < def.mana) {
+    state.scoreFeedback = { glyphId, score, tier, fired: false, reason: 'NO MANA', caster: casterKey, life: 80 };
+    unfireSE();
+    return;
+  }
+  caster.mana -= def.mana;
+  caster.lastCast = glyphId;
+  caster.lastCastFlash = 60;
+  const mult = tierMult(tier);
+  state.scoreFeedback = { glyphId, score, tier, fired: true, caster: casterKey, life: 80 };
+  fireSE(glyphId, tier);
+  if (tier === 'critical') state.flashAlpha = Math.max(state.flashAlpha, 0.22);
+  switch (glyphId) {
+    case 'bolt':
+      pushEffect({ type: 'boltBeam', from: caster, to: target, life: 16, color: def.color, dmg: def.dmg * mult, applied: false });
+      break;
+    case 'fireball':
+      state.projectiles.push({ x: caster.x, y: caster.y - 30, tx: target.x, ty: target.y - 30, t: 0, dur: 38, dmg: def.dmg * mult, color: def.color, target: otherKey, kind: 'fireball' });
+      break;
+    case 'barrier':
+      caster.barrier = 3.0 * mult;
+      pushEffect({ type: 'barrierStart', who: caster, life: 30 });
+      break;
+    case 'heal':
+      caster.hp = Math.min(caster.hpMax, caster.hp + 30 * mult);
+      pushEffect({ type: 'healAura', who: caster, life: 50 });
+      break;
+    case 'parry':
+      caster.parry = 1.0 * mult;
+      pushEffect({ type: 'parryStart', who: caster, life: 30 });
+      break;
+  }
+}
+function pushEffect(e) { state.effects.push(e); }
+function endMatch(winnerKey) {
+  state.gameOver = true;
+  state.winner = winnerKey;
+  state.flashAlpha = 0.45;
+  state.shakeFrames = 30; state.shakeAmp = 10;
+  beep(80, 0.6, 'sawtooth', 0.15);
+  setTimeout(() => beep(440, 0.3, 'square', 0.12), 200);
+  setTimeout(() => beep(660, 0.3, 'square', 0.12), 380);
+}
+
+// ═══════════════════════════════════════════════════════════
+// INPUT (mouse + touch unified via pointer events)
+// ═══════════════════════════════════════════════════════════
+let drawing = false;
+let stroke = [];
+function canvasCoords(ev) {
+  const r = canvas.getBoundingClientRect();
+  return { x: (ev.clientX - r.left) * (canvas.width / r.width), y: (ev.clientY - r.top) * (canvas.height / r.height) };
+}
+canvas.addEventListener('pointerdown', e => {
+  if (state.gameOver) return;
+  ensureAudio();
+  drawing = true; stroke = [canvasCoords(e)]; state.drawTrail = stroke;
+  startDrawTone();
+  canvas.setPointerCapture && canvas.setPointerCapture(e.pointerId);
+  e.preventDefault();
+});
+canvas.addEventListener('pointermove', e => {
+  if (!drawing) return;
+  const p = canvasCoords(e);
+  const last = stroke[stroke.length - 1];
+  if (Math.hypot(p.x - last.x, p.y - last.y) > 2) {
+    stroke.push(p);
+    if (drawTone) drawTone.o.frequency.value = 200 + Math.min(800, Math.hypot(p.x - last.x, p.y - last.y) * 40);
+  }
+  e.preventDefault();
+});
+function endStroke(e) {
+  if (!drawing) return;
+  drawing = false;
+  stopDrawTone();
+  if (stroke.length < 5) { state.drawTrail = []; return; }
+  const res = recognize(stroke);
+  const tier = scoreToTier(res.score);
+  if (tier === 'unfire') {
+    state.scoreFeedback = { glyphId: res.name, score: res.score, tier, fired: false, reason: 'UNFIRED', caster: 'p1', life: 80 };
+    unfireSE();
+  } else {
+    castGlyph('p1', res.name, res.score, tier);
+  }
+  state.drawTrail = [];
+  stroke = [];
+  e && e.preventDefault && e.preventDefault();
+}
+canvas.addEventListener('pointerup', endStroke);
+canvas.addEventListener('pointercancel', endStroke);
+canvas.addEventListener('pointerleave', e => { if (drawing) endStroke(e); });
+window.addEventListener('keydown', e => {
+  if (e.key === ' ' || e.key === 'Enter') {
+    if (state.gameOver) restart();
+    e.preventDefault();
+  }
+  if (e.key === 'r' || e.key === 'R') restart();
+});
+
+function restart() { state = initialState(); aiCastCooldown = 2.5; }
+
+// ═══════════════════════════════════════════════════════════
+// AI (dummy: random glyph every 2.5–4.5s, 60–90% score)
+// ═══════════════════════════════════════════════════════════
+function updateAI(dt) {
+  if (state.gameOver) return;
+  aiCastCooldown -= dt;
+  if (aiCastCooldown > 0) return;
+  const candidates = GLYPH_ORDER.filter(id => state.ai.mana >= GLYPHS[id].mana);
+  if (candidates.length === 0) { aiCastCooldown = 1.0; return; }
+  let pick;
+  if (state.ai.hp < 40 && state.ai.mana >= 40 && Math.random() < 0.6) pick = 'heal';
+  else if (state.p1.hp < 25 && state.ai.mana >= 25) pick = Math.random() < 0.7 ? 'bolt' : 'fireball';
+  else pick = candidates[Math.floor(Math.random() * candidates.length)];
+  if (!candidates.includes(pick)) pick = candidates[0];
+  const score = 0.60 + Math.random() * 0.32; // mostly normal, occasionally high
+  const tier = scoreToTier(score);
+  castGlyph('ai', pick, score, tier);
+  aiCastCooldown = 2.5 + Math.random() * 2.0;
+}
+
+// ═══════════════════════════════════════════════════════════
+// UPDATE
+// ═══════════════════════════════════════════════════════════
+function update(dt) {
+  state.bgPulse += dt;
+  if (state.gameOver) {
+    state.flashAlpha *= 0.92;
+    if (state.shakeFrames > 0) state.shakeFrames--;
+    return;
+  }
+  state.matchTime -= dt;
+  if (state.matchTime <= 0) {
+    state.matchTime = 0;
+    endMatch(state.p1.hp >= state.ai.hp ? 'p1' : 'ai');
+    return;
+  }
+  // Mana regen
+  state.p1.mana = Math.min(state.p1.manaMax, state.p1.mana + 5 * dt);
+  state.ai.mana = Math.min(state.ai.manaMax, state.ai.mana + 5 * dt);
+  // Status timers
+  state.p1.barrier = Math.max(0, state.p1.barrier - dt);
+  state.ai.barrier = Math.max(0, state.ai.barrier - dt);
+  state.p1.parry = Math.max(0, state.p1.parry - dt);
+  state.ai.parry = Math.max(0, state.ai.parry - dt);
+  if (state.p1.lastCastFlash > 0) state.p1.lastCastFlash--;
+  if (state.ai.lastCastFlash > 0) state.ai.lastCastFlash--;
+  // AI
+  updateAI(dt);
+  // Projectiles
+  for (const pr of state.projectiles) {
+    pr.t++;
+    if (pr.t >= pr.dur) {
+      const tgt = state[pr.target];
+      const dmgDealt = applyDamage(tgt, pr.dmg);
+      pushEffect({ type: 'explosion', x: tgt.x, y: tgt.y - 30, life: 22, color: pr.color, size: 60 });
+    }
+  }
+  state.projectiles = state.projectiles.filter(pr => pr.t < pr.dur);
+  // Bolt beam (instant; resolve after 1 frame)
+  for (const ef of state.effects) {
+    if (ef.type === 'boltBeam' && !ef.applied) { applyDamage(ef.to, ef.dmg); ef.applied = true; }
+    ef.life--;
+  }
+  state.effects = state.effects.filter(ef => ef.life > 0);
+  // Score feedback fade
+  if (state.scoreFeedback) {
+    state.scoreFeedback.life--;
+    if (state.scoreFeedback.life <= 0) state.scoreFeedback = null;
+  }
+  // Camera shake
+  if (state.shakeFrames > 0) state.shakeFrames--;
+  state.flashAlpha *= 0.88;
+}
+
+// ═══════════════════════════════════════════════════════════
+// RENDER
+// ═══════════════════════════════════════════════════════════
+function render() {
+  const sx = state.shakeFrames > 0 ? (Math.random() - 0.5) * state.shakeAmp : 0;
+  const sy = state.shakeFrames > 0 ? (Math.random() - 0.5) * state.shakeAmp : 0;
+  ctx.save();
+  ctx.translate(sx, sy);
+
+  // Background
+  const bg = ctx.createLinearGradient(0, 0, 0, 640);
+  bg.addColorStop(0, '#04060f');
+  bg.addColorStop(0.5, '#08081a');
+  bg.addColorStop(1, '#0a0420');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, 960, 640);
+
+  // Grid
+  ctx.strokeStyle = 'rgba(0,255,255,0.06)';
+  ctx.lineWidth = 1;
+  for (let x = 0; x < 960; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 640); ctx.stroke(); }
+  for (let y = 0; y < 640; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(960, y); ctx.stroke(); }
+
+  // Horizon glow
+  const hg = ctx.createLinearGradient(0, 380, 0, 540);
+  hg.addColorStop(0, 'rgba(255,30,180,0.0)');
+  hg.addColorStop(1, 'rgba(255,30,180,0.18)');
+  ctx.fillStyle = hg;
+  ctx.fillRect(0, 380, 960, 160);
+
+  // Skyline silhouette
+  ctx.fillStyle = '#000';
+  for (let i = 0; i < 30; i++) {
+    const bw = 18 + (i % 7) * 6;
+    const bh = 30 + ((i * 53) % 90);
+    ctx.fillRect(i * 33, 540 - bh, bw, bh);
+  }
+  ctx.fillStyle = 'rgba(0,255,255,0.5)';
+  for (let i = 0; i < 30; i++) {
+    const bx = i * 33 + 4;
+    for (let j = 0; j < 6; j++) {
+      if (((i * 7 + j * 3 + Math.floor(state.bgPulse * 4)) % 11) === 0) {
+        ctx.fillRect(bx + (j * 3), 530 - j * 8, 1.5, 1.5);
+      }
+    }
+  }
+
+  // Players (cyber mages, silhouettes)
+  drawMage(state.p1, '#7df9ff', false);
+  drawMage(state.ai, '#ff44dd', true);
+
+  // Status auras
+  drawStatusAuras(state.p1, '#7df9ff');
+  drawStatusAuras(state.ai, '#ff44dd');
+
+  // Projectiles
+  for (const pr of state.projectiles) drawProjectile(pr);
+
+  // Effects
+  for (const ef of state.effects) drawEffect(ef);
+
+  // Player drawing trail
+  if (state.drawTrail && state.drawTrail.length >= 2) drawTrail(state.drawTrail, '#7df9ff');
+
+  // HUD
+  drawHUD();
+
+  // Score feedback
+  if (state.scoreFeedback) drawScoreFeedback(state.scoreFeedback);
+
+  // Game over
+  if (state.gameOver) drawGameOver();
+
+  // Flash overlay
+  if (state.flashAlpha > 0.01) {
+    ctx.fillStyle = `rgba(255,255,255,${state.flashAlpha})`;
+    ctx.fillRect(0, 0, 960, 640);
+  }
+
+  ctx.restore();
+}
+
+function drawMage(p, color, mirror) {
+  const t = state.bgPulse * 2 + (mirror ? 1 : 0);
+  const bob = Math.sin(t) * 3;
+  const x = p.x, y = p.y + bob;
+  ctx.save();
+  ctx.translate(x, y);
+  if (mirror) ctx.scale(-1, 1);
+  // Aura
+  if (p.lastCastFlash > 0) {
+    const a = p.lastCastFlash / 60;
+    ctx.fillStyle = color;
+    ctx.globalAlpha = 0.15 * a;
+    ctx.beginPath(); ctx.arc(0, -30, 60, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  // Body silhouette (robed mage)
+  ctx.fillStyle = '#0a0a18';
+  ctx.beginPath();
+  ctx.moveTo(-22, 0); ctx.lineTo(-26, -50); ctx.lineTo(-18, -78);
+  ctx.lineTo(-8, -90); ctx.lineTo(8, -90); ctx.lineTo(18, -78);
+  ctx.lineTo(26, -50); ctx.lineTo(22, 0); ctx.closePath();
+  ctx.fill();
+  // Hood neon outline
+  ctx.strokeStyle = color; ctx.lineWidth = 1.5;
+  ctx.shadowColor = color; ctx.shadowBlur = 8;
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+  // Eye glow
+  ctx.fillStyle = color;
+  ctx.beginPath(); ctx.arc(-3, -78, 2, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(5, -78, 1.5, 0, Math.PI * 2); ctx.fill();
+  // Hand glyph orb
+  ctx.shadowColor = color; ctx.shadowBlur = 12;
+  ctx.fillStyle = color; ctx.globalAlpha = 0.4;
+  ctx.beginPath(); ctx.arc(20, -30, 6 + Math.sin(t * 4) * 1.5, 0, Math.PI * 2); ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.shadowBlur = 0;
+  ctx.restore();
+}
+function drawStatusAuras(p, color) {
+  if (p.barrier > 0) {
+    const a = Math.min(1, p.barrier / 0.5);
+    ctx.strokeStyle = '#88ff88';
+    ctx.lineWidth = 2;
+    ctx.shadowColor = '#88ff88'; ctx.shadowBlur = 14;
+    ctx.globalAlpha = 0.3 + 0.2 * Math.sin(state.bgPulse * 8);
+    ctx.beginPath(); ctx.arc(p.x, p.y - 40, 50, 0, Math.PI * 2); ctx.stroke();
+    ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+  }
+  if (p.parry > 0) {
+    ctx.strokeStyle = '#ffdd44';
+    ctx.lineWidth = 3;
+    ctx.shadowColor = '#ffdd44'; ctx.shadowBlur = 20;
+    ctx.globalAlpha = 0.6;
+    ctx.beginPath(); ctx.arc(p.x, p.y - 40, 38 + Math.sin(state.bgPulse * 12) * 3, 0, Math.PI * 2); ctx.stroke();
+    ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+  }
+}
+function drawProjectile(pr) {
+  const k = pr.t / pr.dur;
+  const x = pr.x + (pr.tx - pr.x) * k;
+  const y = pr.y + (pr.ty - pr.y) * k - Math.sin(k * Math.PI) * 60; // arc
+  ctx.save();
+  ctx.shadowColor = pr.color; ctx.shadowBlur = 24;
+  ctx.fillStyle = pr.color;
+  ctx.beginPath(); ctx.arc(x, y, 12 + Math.sin(state.bgPulse * 30) * 2, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#fff'; ctx.globalAlpha = 0.7;
+  ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+function drawEffect(ef) {
+  ctx.save();
+  if (ef.type === 'boltBeam') {
+    const a = ef.life / 16;
+    const c = ef.from, d = ef.to;
+    ctx.strokeStyle = ef.color;
+    ctx.lineWidth = 4 + Math.random() * 6;
+    ctx.shadowColor = ef.color; ctx.shadowBlur = 24;
+    ctx.globalAlpha = a;
+    ctx.beginPath();
+    ctx.moveTo(c.x, c.y - 40);
+    const segs = 6;
+    for (let i = 1; i <= segs; i++) {
+      const t = i / segs;
+      const x = c.x + (d.x - c.x) * t + (Math.random() - 0.5) * 30;
+      const y = (c.y - 40) + ((d.y - 30) - (c.y - 40)) * t + (Math.random() - 0.5) * 30;
+      ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  } else if (ef.type === 'explosion') {
+    const a = ef.life / 22;
+    const r = ef.size * (1 - a);
+    ctx.strokeStyle = ef.color; ctx.lineWidth = 3;
+    ctx.shadowColor = ef.color; ctx.shadowBlur = 20;
+    ctx.globalAlpha = a;
+    ctx.beginPath(); ctx.arc(ef.x, ef.y, r, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = ef.color; ctx.globalAlpha = a * 0.4;
+    ctx.beginPath(); ctx.arc(ef.x, ef.y, r * 0.6, 0, Math.PI * 2); ctx.fill();
+  } else if (ef.type === 'hit') {
+    const a = ef.life / 24;
+    ctx.fillStyle = ef.color; ctx.globalAlpha = a;
+    ctx.shadowColor = ef.color; ctx.shadowBlur = 18;
+    ctx.beginPath(); ctx.arc(ef.x, ef.y, 25 * (1 - a), 0, Math.PI * 2); ctx.fill();
+    ctx.font = 'bold 24px monospace'; ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
+    ctx.fillText('!', ef.x, ef.y - 10);
+  } else if (ef.type === 'parryFlash') {
+    const a = ef.life / 24;
+    ctx.strokeStyle = '#ffdd44'; ctx.lineWidth = 4;
+    ctx.shadowColor = '#ffdd44'; ctx.shadowBlur = 30;
+    ctx.globalAlpha = a;
+    ctx.beginPath(); ctx.arc(ef.who.x, ef.who.y - 40, 60 * (1 - a) + 30, 0, Math.PI * 2); ctx.stroke();
+    ctx.font = 'bold 20px monospace'; ctx.fillStyle = '#ffdd44'; ctx.textAlign = 'center';
+    ctx.fillText('PARRY!', ef.who.x, ef.who.y - 100);
+  } else if (ef.type === 'barrierHit') {
+    const a = ef.life / 18;
+    ctx.strokeStyle = '#88ff88'; ctx.lineWidth = 3;
+    ctx.shadowColor = '#88ff88'; ctx.shadowBlur = 25;
+    ctx.globalAlpha = a;
+    ctx.beginPath(); ctx.arc(ef.who.x, ef.who.y - 40, 50, 0, Math.PI * 2); ctx.stroke();
+  } else if (ef.type === 'barrierStart') {
+    const a = ef.life / 30;
+    ctx.strokeStyle = '#88ff88'; ctx.lineWidth = 2;
+    ctx.shadowColor = '#88ff88'; ctx.shadowBlur = 18;
+    ctx.globalAlpha = a;
+    ctx.beginPath(); ctx.arc(ef.who.x, ef.who.y - 40, 50 + (1 - a) * 30, 0, Math.PI * 2); ctx.stroke();
+  } else if (ef.type === 'parryStart') {
+    const a = ef.life / 30;
+    ctx.strokeStyle = '#ffdd44'; ctx.lineWidth = 2;
+    ctx.shadowColor = '#ffdd44'; ctx.shadowBlur = 18;
+    ctx.globalAlpha = a;
+    ctx.beginPath(); ctx.arc(ef.who.x, ef.who.y - 40, 38 + (1 - a) * 24, 0, Math.PI * 2); ctx.stroke();
+  } else if (ef.type === 'healAura') {
+    const a = ef.life / 50;
+    ctx.fillStyle = '#ff44dd'; ctx.shadowColor = '#ff44dd'; ctx.shadowBlur = 18;
+    for (let i = 0; i < 6; i++) {
+      const ang = (i / 6 + state.bgPulse * 0.3) * Math.PI * 2;
+      const rr = 30 + (1 - a) * 30;
+      ctx.globalAlpha = a;
+      ctx.beginPath(); ctx.arc(ef.who.x + Math.cos(ang) * rr, ef.who.y - 40 + Math.sin(ang) * rr * 0.6, 4, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+function drawTrail(pts, color) {
+  ctx.save();
+  ctx.shadowColor = color; ctx.shadowBlur = 16;
+  ctx.strokeStyle = color; ctx.lineWidth = 5; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.stroke();
+  // Inner bright core
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.stroke();
+  ctx.restore();
+}
+function drawHUD() {
+  // P1 HP/Mana (top left)
+  drawBar(20, 20, 360, 18, state.p1.hp / state.p1.hpMax, '#ff4488', '1P · HP', state.p1.hp);
+  drawBar(20, 44, 360, 10, state.p1.mana / state.p1.manaMax, '#7df9ff', 'MANA', state.p1.mana);
+  // AI HP/Mana (top right)
+  drawBar(580, 20, 360, 18, state.ai.hp / state.ai.hpMax, '#ff4488', 'AI · HP', state.ai.hp, true);
+  drawBar(580, 44, 360, 10, state.ai.mana / state.ai.manaMax, '#ff44dd', 'MANA', state.ai.mana, true);
+  // Timer
+  const sec = Math.max(0, Math.ceil(state.matchTime));
+  ctx.font = 'bold 36px monospace'; ctx.textAlign = 'center';
+  ctx.fillStyle = sec <= 10 ? '#ff4488' : '#7df9ff';
+  ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = 14;
+  ctx.fillText(String(sec).padStart(2, '0'), 480, 50);
+  ctx.shadowBlur = 0;
+  ctx.font = '10px monospace'; ctx.fillStyle = '#566';
+  ctx.fillText('TIME', 480, 64);
+  // Glyph reference (bottom)
+  drawGlyphReference();
+}
+function drawBar(x, y, w, h, ratio, color, label, val, mirror) {
+  ctx.save();
+  // Frame
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = '#244'; ctx.lineWidth = 1;
+  ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+  // Fill
+  const fw = Math.max(0, Math.min(1, ratio)) * (w - 2);
+  ctx.fillStyle = color;
+  ctx.shadowColor = color; ctx.shadowBlur = 8;
+  if (mirror) ctx.fillRect(x + (w - 1 - fw), y + 1, fw, h - 2);
+  else ctx.fillRect(x + 1, y + 1, fw, h - 2);
+  ctx.shadowBlur = 0;
+  // Label
+  ctx.font = 'bold 11px monospace'; ctx.fillStyle = '#aaa';
+  ctx.textAlign = mirror ? 'right' : 'left';
+  ctx.fillText(label, mirror ? x + w : x, y - 4);
+  ctx.fillStyle = '#fff';
+  ctx.fillText(Math.round(val), mirror ? x : x + w, y - 4);
+  ctx.restore();
+}
+function drawGlyphReference() {
+  const y = 580;
+  const w = 170, gap = 8;
+  const total = w * 5 + gap * 4;
+  let x = (960 - total) / 2;
+  ctx.font = '10px monospace';
+  for (const id of GLYPH_ORDER) {
+    const g = GLYPHS[id];
+    const have = state.p1.mana >= g.mana;
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(x, y, w, 50);
+    ctx.strokeStyle = have ? g.color : '#333';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, 49);
+    // Mini icon
+    ctx.save();
+    ctx.translate(x + 22, y + 25);
+    ctx.strokeStyle = have ? g.color : '#444';
+    ctx.lineWidth = 1.6;
+    ctx.shadowColor = have ? g.color : 'transparent'; ctx.shadowBlur = have ? 6 : 0;
+    drawGlyphIcon(g.shape, 14);
+    ctx.restore();
+    // Text
+    ctx.fillStyle = have ? '#fff' : '#666'; ctx.textAlign = 'left';
+    ctx.font = 'bold 11px monospace';
+    ctx.fillText(g.nameJa, x + 44, y + 18);
+    ctx.font = '9px monospace'; ctx.fillStyle = have ? '#aaa' : '#555';
+    ctx.fillText(g.nameEn.toUpperCase(), x + 44, y + 30);
+    ctx.fillStyle = have ? g.color : '#555';
+    ctx.fillText('MANA ' + g.mana, x + 44, y + 42);
+    x += w + gap;
+  }
+}
+function drawGlyphIcon(shape, s) {
+  ctx.beginPath();
+  if (shape === 'zigzag') { ctx.moveTo(-s, -s/2); ctx.lineTo(-s/3, s/3); ctx.lineTo(s/3, -s/3); ctx.lineTo(s, s/2); ctx.stroke(); }
+  else if (shape === 'circle') { ctx.arc(0, 0, s * 0.85, 0, Math.PI * 2); ctx.stroke(); }
+  else if (shape === 'triangle') { ctx.moveTo(0, -s); ctx.lineTo(s, s * 0.7); ctx.lineTo(-s, s * 0.7); ctx.closePath(); ctx.stroke(); }
+  else if (shape === 'check') { ctx.moveTo(-s, 0); ctx.lineTo(-s/4, s/2); ctx.lineTo(s, -s); ctx.stroke(); }
+  else if (shape === 'rect') { ctx.rect(-s, -s * 0.7, 2 * s, 1.4 * s); ctx.stroke(); }
+}
+function drawScoreFeedback(sf) {
+  const a = Math.min(1, sf.life / 30);
+  const def = sf.glyphId ? GLYPHS[sf.glyphId] : null;
+  const tc = tierColor(sf.tier);
+  const baseY = sf.caster === 'p1' ? 110 : 110;
+  const baseX = sf.caster === 'p1' ? 140 : 820;
+  ctx.save();
+  ctx.globalAlpha = a;
+  ctx.font = 'bold 22px monospace'; ctx.textAlign = 'center';
+  ctx.fillStyle = tc; ctx.shadowColor = tc; ctx.shadowBlur = 14;
+  const pct = Math.round(sf.score * 100) + '%';
+  ctx.fillText(pct, baseX, baseY);
+  ctx.font = 'bold 13px monospace'; ctx.fillStyle = '#fff';
+  ctx.fillText(sf.tier.toUpperCase() + (sf.fired ? '' : ' · ' + (sf.reason || '')), baseX, baseY + 18);
+  if (def) { ctx.fillStyle = def.color; ctx.fillText(def.nameJa, baseX, baseY + 36); }
+  ctx.shadowBlur = 0;
+  ctx.restore();
+}
+function drawGameOver() {
+  ctx.fillStyle = 'rgba(0,0,0,0.7)';
+  ctx.fillRect(0, 0, 960, 640);
+  const won = state.winner === 'p1';
+  ctx.font = 'bold 80px monospace'; ctx.textAlign = 'center';
+  ctx.fillStyle = won ? '#7df9ff' : '#ff44dd';
+  ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = 30;
+  ctx.fillText(won ? 'VICTORY' : 'DEFEAT', 480, 280);
+  ctx.shadowBlur = 0;
+  ctx.font = 'bold 22px monospace'; ctx.fillStyle = '#fff';
+  ctx.fillText(`${state.p1.hp} HP   vs   ${state.ai.hp} HP`, 480, 330);
+  ctx.font = '14px monospace'; ctx.fillStyle = '#aaa';
+  ctx.fillText('SPACE / ENTER TO RESTART', 480, 400);
+}
+
+// ═══════════════════════════════════════════════════════════
+// MAIN LOOP
+// ═══════════════════════════════════════════════════════════
+let lastT = performance.now();
+function loop(t) {
+  let dt = (t - lastT) / 1000;
+  if (dt > 0.1) dt = 0.1;
+  lastT = t;
+  update(dt);
+  render();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
