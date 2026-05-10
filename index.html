@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>GLYPH DUEL — Sprint 1-A2</title>
+<title>GLYPH DUEL — Phase 1A</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
   html, body { background: #000; height: 100vh; overflow: hidden; touch-action: none; font-family: 'SF Mono', Menlo, monospace; }
@@ -14,7 +14,7 @@
 </head>
 <body>
 <canvas id="game" width="960" height="640"></canvas>
-<div class="hint">DRAW WITH MOUSE OR FINGER · TAB FOR GLYPH BOOK · SPACE TO RESTART</div>
+<div class="hint" id="hint">DRAW WITH MOUSE OR FINGER</div>
 <script>
 'use strict';
 
@@ -23,6 +23,7 @@
 // ═══════════════════════════════════════════════════════════
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
+const hintEl = document.getElementById('hint');
 function resize() {
   const sc = Math.min(window.innerWidth / 960, window.innerHeight / 640);
   canvas.style.width = (960 * sc) + 'px';
@@ -68,135 +69,115 @@ function distAtBest(p, T, a, b, th) {
   return Math.min(f1, f2);
 }
 function preprocess(raw) { let p = resample(raw, N_RESAMPLE); p = rotateBy(p, -indicativeAngle(p)); p = scaleTo(p, SQ_SIZE); p = translateTo(p, { x: 0, y: 0 }); return p; }
-const TEMPLATES = [];
-function reg(name, raw) { TEMPLATES.push({ name, points: preprocess(raw) }); }
+const TEMPLATES_ALL = [];      // every glyph template (30)
+let TEMPLATES_ACTIVE = [];     // currently-equipped subset (deck of 8)
+function reg(name, raw) { TEMPLATES_ALL.push({ name, points: preprocess(raw) }); }
+function setActiveTemplates(deckIds) { TEMPLATES_ACTIVE = TEMPLATES_ALL.filter(t => deckIds.includes(t.name)); }
 function recognize(raw) {
-  if (raw.length < 5) return { name: null, score: 0 };
+  if (raw.length < 5 || TEMPLATES_ACTIVE.length === 0) return { name: null, score: 0 };
   const c = preprocess(raw); let best = Infinity, n = null;
-  for (const t of TEMPLATES) { const d = distAtBest(c, t.points, -ANGLE_RANGE, ANGLE_RANGE, ANGLE_PRECISION); if (d < best) { best = d; n = t.name; } }
+  for (const t of TEMPLATES_ACTIVE) { const d = distAtBest(c, t.points, -ANGLE_RANGE, ANGLE_RANGE, ANGLE_PRECISION); if (d < best) { best = d; n = t.name; } }
   return { name: n, score: Math.max(0, 1 - best / HALF_DIAGONAL) };
 }
 function circ(cx, cy, r, n, dir) { const out = []; for (let i = 0; i <= n; i++) { const a = (i / n) * Math.PI * 2 * (dir || 1) - Math.PI / 2; out.push({ x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r }); } return out; }
 
 // ═══════════════════════════════════════════════════════════
-// 30 GLYPH TEMPLATES (unistroke; some are approximations of
-// multi-stroke spec shapes — see PHASE1_SPEC.md §3.3)
+// 30 GLYPH TEMPLATES
 // ═══════════════════════════════════════════════════════════
-// ATTACK (10)
-reg('bolt',         [{x:0,y:0},{x:60,y:40},{x:120,y:0},{x:180,y:60},{x:240,y:30},{x:300,y:90}]);                    // zigzag
-reg('fireball',     circ(100, 100, 80, 24, 1));                                                                      // CW circle
-reg('icicle',       [{x:0,y:0},{x:60,y:120},{x:120,y:0}]);                                                           // V (sharp)
-reg('windblade',    [{x:0,y:60},{x:30,y:30},{x:80,y:0},{x:130,y:30},{x:160,y:60}]);                                  // crescent / shallow arc
-reg('beam',         [{x:0,y:0},{x:200,y:0},{x:200,y:30},{x:0,y:30}]);                                                // double-line (long horiz w/ short return)
-reg('gravorb',      (() => { const o = []; for (let i = 0; i <= 50; i++) { const a = i * 0.4, r = 80 - i * 1.4; o.push({ x: 100 + Math.cos(a) * Math.max(2, r), y: 100 + Math.sin(a) * Math.max(2, r) }); } return o; })()); // spiral
-reg('lightnet',     [{x:0,y:0},{x:80,y:0},{x:80,y:40},{x:0,y:40},{x:0,y:80},{x:80,y:80}]);                           // grid (square zigzag)
-reg('flame',        [{x:0,y:0},{x:50,y:20},{x:100,y:0},{x:150,y:30},{x:200,y:10},{x:250,y:40},{x:300,y:20},{x:350,y:50}]); // long wavy line (flame stream)
-reg('shadowstrike', [{x:0,y:0},{x:100,y:100},{x:50,y:30},{x:100,y:0},{x:0,y:100}]);                                  // X (single-stroke approx)
-reg('doubleburst',  [{x:0,y:100},{x:50,y:0},{x:100,y:100},{x:150,y:0},{x:200,y:100}]);                               // double-triangle peaks (M)
-
-// DEFENSE (8)
-reg('barrier',      [{x:100,y:0},{x:0,y:200},{x:200,y:200},{x:100,y:0}]);                                            // triangle (closed, point up)
-reg('reflect',      [{x:0,y:0},{x:200,y:0},{x:100,y:200},{x:0,y:0}]);                                                // inverted triangle (point down) — closed
-reg('heal',         [{x:0,y:80},{x:35,y:130},{x:80,y:60},{x:200,y:0}]);                                              // check
-reg('cleanse',      [{x:0,y:50},{x:40,y:0},{x:80,y:80},{x:120,y:0},{x:160,y:80},{x:200,y:0},{x:240,y:50}]);          // wave / sine
-reg('mirror',       (() => { const o = []; for (let i = 0; i <= 40; i++) { const a = (i / 40) * Math.PI * 2, r = 60 + Math.cos(a * 2) * 30; o.push({ x: 100 + Math.cos(a) * r, y: 100 + Math.sin(a) * r * 0.5 }); } return o; })()); // figure-8 (symmetric)
-reg('immortal',     [{x:100,y:0},{x:130,y:60},{x:200,y:80},{x:140,y:120},{x:170,y:200},{x:100,y:160},{x:30,y:200},{x:60,y:120},{x:0,y:80},{x:70,y:60},{x:100,y:0}]); // 5-point star (closed)
-reg('manadrain',    [{x:200,y:50},{x:0,y:50},{x:30,y:20},{x:0,y:50},{x:30,y:80}]);                                   // arrow (← shaped)
-reg('selfbuff',     [{x:100,y:0},{x:0,y:100},{x:200,y:100}]);                                                        // upright triangle (open) — caret-like
-
-// MOVEMENT (4)
-reg('teleport',     [{x:100,y:100},{x:101,y:101},{x:102,y:100},{x:101,y:99}]);                                       // dot (very small loop)
-reg('windrun',      [{x:0,y:50},{x:25,y:30},{x:50,y:70},{x:75,y:40}]);                                               // short wave
-reg('timeslow',     (() => { const o = []; for (let i = 0; i <= 24; i++) { const a = (i / 24) * Math.PI * 2 - Math.PI / 2; o.push({ x: 100 + Math.cos(a) * 60, y: 100 + Math.sin(a) * 60 }); } o.push({ x: 100, y: 100 }); o.push({ x: 160, y: 100 }); return o; })()); // clock (circle + hand)
-reg('shadowwalk',   [{x:0,y:0},{x:60,y:0},{x:0,y:60},{x:60,y:60}]);                                                  // narrow Z
-
-// TRAP / COMBO (4)
-reg('trapset',      [{x:0,y:0},{x:80,y:80},{x:0,y:80},{x:80,y:0}]);                                                  // X-mark (different from shadowstrike)
-reg('trigger',      [{x:0,y:0},{x:30,y:0}]);                                                                         // very short line
-reg('manazone',     [{x:100,y:0},{x:200,y:75},{x:165,y:200},{x:35,y:200},{x:0,y:75},{x:100,y:0}]);                   // pentagon (closed)
-reg('resonance',    (() => { const o = []; for (let i = 0; i <= 60; i++) { const a = i * 0.5, r = 20 + i * 1.0; o.push({ x: 100 + Math.cos(a) * r, y: 100 + Math.sin(a) * r }); } return o; })()); // outward spiral
-
-// COUNTER (4)
-reg('parry',        [{x:0,y:0},{x:200,y:0},{x:200,y:120},{x:0,y:120},{x:0,y:0}]);                                    // rectangle (closed)
-reg('counterspell', (() => { const o = []; for (let i = 0; i <= 50; i++) { const a = i * 0.6, r = 70 - i * 1.2; o.push({ x: 100 + Math.cos(a) * Math.max(3, r), y: 100 + Math.sin(a) * Math.max(3, r) }); } return o; })()); // tighter spiral (whirl)
-reg('reverse',      [{x:0,y:0},{x:50,y:100},{x:100,y:0},{x:150,y:100},{x:0,y:0}]);                                   // omega-ish (closed)
-reg('vengeance',    [{x:100,y:0},{x:50,y:80},{x:80,y:160},{x:100,y:200},{x:120,y:160},{x:150,y:80},{x:100,y:0}]);    // teardrop (closed)
+reg('bolt',         [{x:0,y:0},{x:60,y:40},{x:120,y:0},{x:180,y:60},{x:240,y:30},{x:300,y:90}]);
+reg('fireball',     circ(100, 100, 80, 24, 1));
+reg('icicle',       [{x:0,y:0},{x:60,y:120},{x:120,y:0}]);
+reg('windblade',    [{x:0,y:60},{x:30,y:30},{x:80,y:0},{x:130,y:30},{x:160,y:60}]);
+reg('beam',         [{x:0,y:0},{x:200,y:0},{x:200,y:30},{x:0,y:30}]);
+reg('gravorb',      (() => { const o = []; for (let i = 0; i <= 50; i++) { const a = i * 0.4, r = 80 - i * 1.4; o.push({ x: 100 + Math.cos(a) * Math.max(2, r), y: 100 + Math.sin(a) * Math.max(2, r) }); } return o; })());
+reg('lightnet',     [{x:0,y:0},{x:80,y:0},{x:80,y:40},{x:0,y:40},{x:0,y:80},{x:80,y:80}]);
+reg('flame',        [{x:0,y:0},{x:50,y:20},{x:100,y:0},{x:150,y:30},{x:200,y:10},{x:250,y:40},{x:300,y:20},{x:350,y:50}]);
+reg('shadowstrike', [{x:0,y:0},{x:100,y:100},{x:50,y:30},{x:100,y:0},{x:0,y:100}]);
+reg('doubleburst',  [{x:0,y:100},{x:50,y:0},{x:100,y:100},{x:150,y:0},{x:200,y:100}]);
+reg('barrier',      [{x:100,y:0},{x:0,y:200},{x:200,y:200},{x:100,y:0}]);
+reg('reflect',      [{x:0,y:0},{x:200,y:0},{x:100,y:200},{x:0,y:0}]);
+reg('heal',         [{x:0,y:80},{x:35,y:130},{x:80,y:60},{x:200,y:0}]);
+reg('cleanse',      [{x:0,y:50},{x:40,y:0},{x:80,y:80},{x:120,y:0},{x:160,y:80},{x:200,y:0},{x:240,y:50}]);
+reg('mirror',       (() => { const o = []; for (let i = 0; i <= 40; i++) { const a = (i / 40) * Math.PI * 2, r = 60 + Math.cos(a * 2) * 30; o.push({ x: 100 + Math.cos(a) * r, y: 100 + Math.sin(a) * r * 0.5 }); } return o; })());
+reg('immortal',     [{x:100,y:0},{x:130,y:60},{x:200,y:80},{x:140,y:120},{x:170,y:200},{x:100,y:160},{x:30,y:200},{x:60,y:120},{x:0,y:80},{x:70,y:60},{x:100,y:0}]);
+reg('manadrain',    [{x:200,y:50},{x:0,y:50},{x:30,y:20},{x:0,y:50},{x:30,y:80}]);
+reg('selfbuff',     [{x:100,y:0},{x:0,y:100},{x:200,y:100}]);
+reg('teleport',     [{x:100,y:100},{x:101,y:101},{x:102,y:100},{x:101,y:99}]);
+reg('windrun',      [{x:0,y:50},{x:25,y:30},{x:50,y:70},{x:75,y:40}]);
+reg('timeslow',     (() => { const o = []; for (let i = 0; i <= 24; i++) { const a = (i / 24) * Math.PI * 2 - Math.PI / 2; o.push({ x: 100 + Math.cos(a) * 60, y: 100 + Math.sin(a) * 60 }); } o.push({ x: 100, y: 100 }); o.push({ x: 160, y: 100 }); return o; })());
+reg('shadowwalk',   [{x:0,y:0},{x:60,y:0},{x:0,y:60},{x:60,y:60}]);
+reg('trapset',      [{x:0,y:0},{x:80,y:80},{x:0,y:80},{x:80,y:0}]);
+reg('trigger',      [{x:0,y:0},{x:30,y:0}]);
+reg('manazone',     [{x:100,y:0},{x:200,y:75},{x:165,y:200},{x:35,y:200},{x:0,y:75},{x:100,y:0}]);
+reg('resonance',    (() => { const o = []; for (let i = 0; i <= 60; i++) { const a = i * 0.5, r = 20 + i * 1.0; o.push({ x: 100 + Math.cos(a) * r, y: 100 + Math.sin(a) * r }); } return o; })());
+reg('parry',        [{x:0,y:0},{x:200,y:0},{x:200,y:120},{x:0,y:120},{x:0,y:0}]);
+reg('counterspell', (() => { const o = []; for (let i = 0; i <= 50; i++) { const a = i * 0.6, r = 70 - i * 1.2; o.push({ x: 100 + Math.cos(a) * Math.max(3, r), y: 100 + Math.sin(a) * Math.max(3, r) }); } return o; })());
+reg('reverse',      [{x:0,y:0},{x:50,y:100},{x:100,y:0},{x:150,y:100},{x:0,y:0}]);
+reg('vengeance',    [{x:100,y:0},{x:50,y:80},{x:80,y:160},{x:100,y:200},{x:120,y:160},{x:150,y:80},{x:100,y:0}]);
 
 // ═══════════════════════════════════════════════════════════
 // GLYPH DEFINITIONS
 // ═══════════════════════════════════════════════════════════
 const G = {
-  // ATTACKS
   bolt:         { ja:'雷撃',   en:'Bolt',          cat:'attack',  syn:'indep',     mana:25, dmg:15, color:'#7df9ff', shape:'zigzag',     desc:'instant beam' },
   fireball:     { ja:'火球',   en:'Fireball',      cat:'attack',  syn:'indep',     mana:35, dmg:22, color:'#ff8844', shape:'circle',     desc:'arcing projectile' },
   icicle:       { ja:'氷柱',   en:'Icicle',        cat:'attack',  syn:'indep',     mana:20, dmg:12, color:'#aaeeff', shape:'v',          desc:'piercing shard' },
   windblade:    { ja:'風刃',   en:'Wind Blade',    cat:'attack',  syn:'indep',     mana:30, dmg:18, color:'#88ffcc', shape:'crescent',   desc:'fast slicing arc' },
   beam:         { ja:'光線',   en:'Light Beam',    cat:'attack',  syn:'indep',     mana:50, dmg:30, color:'#ffff88', shape:'twoLines',   desc:'homing photon beam' },
-  gravorb:      { ja:'重力球', en:'Grav Orb',      cat:'attack',  syn:'soft',      mana:40, dmg:8,  color:'#aa66ff', shape:'spiral',     desc:'pull + low dmg; sets gravWeak buff' },
+  gravorb:      { ja:'重力球', en:'Grav Orb',      cat:'attack',  syn:'soft',      mana:40, dmg:8,  color:'#aa66ff', shape:'spiral',     desc:'pull + sets next attack +30%' },
   lightnet:     { ja:'雷網',   en:'Lightning Net', cat:'attack',  syn:'indep',     mana:35, dmg:14, color:'#88ddff', shape:'grid',       desc:'area dmg + 1.5s stun' },
-  flame:        { ja:'火炎放射',en:'Flamethrower', cat:'attack',  syn:'indep',     mana:60, dmg:5,  color:'#ff4422', shape:'longWave',   desc:'3s burn DOT 5/0.5s' },
+  flame:        { ja:'火炎放射',en:'Flamethrower', cat:'attack',  syn:'indep',     mana:60, dmg:5,  color:'#ff4422', shape:'longWave',   desc:'3s burn DOT' },
   shadowstrike: { ja:'影刺',   en:'Shadow Strike', cat:'attack',  syn:'soft',      mana:45, dmg:25, color:'#9944dd', shape:'x',          desc:'teleport-strike' },
-  doubleburst:  { ja:'双爆',   en:'Double Burst',  cat:'attack',  syn:'requiredCombo', mana:80, dmg:40, color:'#ff44dd', shape:'doubleTri', desc:'huge dmg, requires fire-prep' },
-  // DEFENSES
+  doubleburst:  { ja:'双爆',   en:'Double Burst',  cat:'attack',  syn:'requiredCombo', mana:80, dmg:40, color:'#ff44dd', shape:'doubleTri', desc:'40 dmg · NEEDS fire prep' },
   barrier:      { ja:'結界',   en:'Barrier',       cat:'defense', syn:'indep',     mana:30, color:'#88ff88', shape:'triangle',  desc:'3s damage block' },
   reflect:      { ja:'反射',   en:'Reflect',       cat:'defense', syn:'indep',     mana:50, color:'#aaffaa', shape:'invTriangle',desc:'reflect next hit' },
   heal:         { ja:'治癒',   en:'Heal',          cat:'defense', syn:'indep',     mana:40, color:'#ff44dd', shape:'check',      desc:'+30 HP' },
   cleanse:      { ja:'浄化',   en:'Cleanse',       cat:'defense', syn:'indep',     mana:25, color:'#ddffdd', shape:'wave',       desc:'remove all debuffs' },
   mirror:       { ja:'鏡',     en:'Mirror',        cat:'defense', syn:'soft',      mana:60, color:'#dddddd', shape:'figure8',    desc:'next glyph fires twice' },
-  immortal:     { ja:'不滅',   en:'Immortal',      cat:'defense', syn:'requiredCombo', mana:70, color:'#ffdd00', shape:'star',  desc:'3s invuln' },
+  immortal:     { ja:'不滅',   en:'Immortal',      cat:'defense', syn:'requiredCombo', mana:70, color:'#ffdd00', shape:'star',  desc:'3s invuln · NEEDS def prep' },
   manadrain:    { ja:'マナ吸収',en:'Mana Drain',   cat:'defense', syn:'indep',     mana:35, color:'#aa88ff', shape:'arrow',      desc:'enemy mana -20' },
   selfbuff:     { ja:'自己強化',en:'Self Empower', cat:'defense', syn:'soft',      mana:45, color:'#ff8844', shape:'upTriangle', desc:'next glyph dmg ×2' },
-  // MOVEMENT
-  teleport:     { ja:'瞬間移動',en:'Teleport',     cat:'movement', syn:'indep',     mana:30, color:'#cc88ff', shape:'dot',       desc:'evade next 1 hit (0.5s window)' },
+  teleport:     { ja:'瞬間移動',en:'Teleport',     cat:'movement', syn:'indep',     mana:30, color:'#cc88ff', shape:'dot',       desc:'evade next 1 hit' },
   windrun:      { ja:'風走',   en:'Wind Run',      cat:'movement', syn:'indep',     mana:20, color:'#88ffaa', shape:'shortWave', desc:'+50% mana regen 3s' },
   timeslow:     { ja:'時遅',   en:'Time Slow',     cat:'movement', syn:'indep',     mana:50, color:'#88aaff', shape:'clock',     desc:'enemy mana regen halved 3s' },
-  shadowwalk:   { ja:'影渡',   en:'Shadow Walk',   cat:'movement', syn:'soft',      mana:40, color:'#440088', shape:'narrowZ',   desc:'evade + next attack +50% dmg' },
-  // TRAP / COMBO
+  shadowwalk:   { ja:'影渡',   en:'Shadow Walk',   cat:'movement', syn:'soft',      mana:40, color:'#440088', shape:'narrowZ',   desc:'evade + next attack +50%' },
   trapset:      { ja:'罠設置', en:'Trap Set',      cat:'trap',    syn:'requiredCombo', mana:30, color:'#ffaa00', shape:'xMark',  desc:'place trap (max 2)' },
-  trigger:      { ja:'発動',   en:'Trigger',       cat:'trap',    syn:'requiredCombo', mana:10, color:'#ffaa00', shape:'shortLine', desc:'detonate placed traps (25 dmg ea)' },
-  manazone:     { ja:'結界陣', en:'Mana Sigil',    cat:'trap',    syn:'requiredCombo', mana:50, color:'#ffaa44', shape:'pentagon', desc:'+10/sec mana regen 5s' },
-  resonance:    { ja:'共鳴',   en:'Resonance',     cat:'trap',    syn:'requiredCombo', mana:30, color:'#ffeeaa', shape:'spiralOut', desc:'next glyph mana cost halved' },
-  // COUNTER
-  parry:        { ja:'パリィ', en:'Parry',         cat:'counter', syn:'indep',     mana:20, color:'#ffdd44', shape:'rect',       desc:'block next 1 hit (1s window)' },
+  trigger:      { ja:'発動',   en:'Trigger',       cat:'trap',    syn:'requiredCombo', mana:10, color:'#ffaa00', shape:'shortLine', desc:'detonate traps · 25 ea' },
+  manazone:     { ja:'結界陣', en:'Mana Sigil',    cat:'trap',    syn:'requiredCombo', mana:50, color:'#ffaa44', shape:'pentagon', desc:'+10/sec mana 5s' },
+  resonance:    { ja:'共鳴',   en:'Resonance',     cat:'trap',    syn:'requiredCombo', mana:30, color:'#ffeeaa', shape:'spiralOut', desc:'next glyph mana halved' },
+  parry:        { ja:'パリィ', en:'Parry',         cat:'counter', syn:'indep',     mana:20, color:'#ffdd44', shape:'rect',       desc:'block next 1 hit' },
   counterspell: { ja:'召し上げ',en:'Counterspell', cat:'counter', syn:'soft',      mana:40, color:'#ddff44', shape:'whirl',      desc:'1s enemy mana lock' },
-  reverse:      { ja:'反転',   en:'Reverse',       cat:'counter', syn:'requiredCombo', mana:60, color:'#ff44aa', shape:'omega',  desc:'steal enemy buffs' },
-  vengeance:    { ja:'復讐',   en:'Vengeance',     cat:'counter', syn:'requiredCombo', mana:70, color:'#ff0044', shape:'teardrop', desc:'next hit on you triggers 2x counter' },
+  reverse:      { ja:'反転',   en:'Reverse',       cat:'counter', syn:'requiredCombo', mana:60, color:'#ff44aa', shape:'omega',  desc:'steal buffs · NEEDS enemy buff' },
+  vengeance:    { ja:'復讐',   en:'Vengeance',     cat:'counter', syn:'requiredCombo', mana:70, color:'#ff0044', shape:'teardrop', desc:'next hit triggers 2× counter · NEEDS HP<50%' },
 };
 const G_ORDER = Object.keys(G);
 const CAT_COLOR = { attack: '#ff8866', defense: '#88ff88', movement: '#88ccff', trap: '#ffaa44', counter: '#ffdd44' };
 const CAT_LABEL_JA = { attack: '攻撃', defense: '防御', movement: '移動', trap: '設置', counter: '反応' };
 
 // ═══════════════════════════════════════════════════════════
-// GAME STATE
+// LOCAL STORAGE
 // ═══════════════════════════════════════════════════════════
-const initialPlayer = (side, x) => ({
-  side, x, y: 480, name: side === 'left' ? '1P' : 'AI',
-  hp: 100, hpMax: 100, mana: 100, manaMax: 100,
-  // Buffs / states (durations in seconds)
-  barrier: 0, parry: 0, invuln: 0, reflectNext: 0, mirrorNext: 0, doubleNext: 0, halveNext: 0,
-  burn: 0, burnDmg: 0, stun: 0, slowMana: 0, fastMana: 0, manaLock: 0, gravWeak: 0,
-  // Trap state
-  traps: 0,
-  // Vengeance: when hit, triggers 2x counter
-  vengeance: 0,
-  // Visuals
-  lastCast: null, lastCastFlash: 0,
-  // Synergy state (Sprint 1-A3 will use this; tracked now for sequencing)
-  lastFireGlyph: null,    // last attack glyph cast (for fire→fire combo etc.)
-  lastFireTimer: 0,       // sec since last cast
-});
-const newState = () => ({
-  p1: initialPlayer('left', 130),
-  ai: initialPlayer('right', 830),
-  matchTime: 90.0,
-  gameOver: false, winner: null,
-  effects: [], projectiles: [],
-  scoreFeedback: null, drawTrail: [],
-  bgPulse: 0, shakeFrames: 0, shakeAmp: 0, flashAlpha: 0,
-  bookOpen: false,
-});
-let state = newState();
-let aiCooldown = 2.5;
+const SAVE_KEY = 'glyphduel:save:v1';
+const DEFAULT_DECK = ['bolt', 'fireball', 'icicle', 'barrier', 'heal', 'parry', 'manadrain', 'lightnet'];
+const DEFAULT_SAVE = {
+  deck: DEFAULT_DECK.slice(),
+  difficulty: 'normal',
+  lifetime: { wins: 0, losses: 0, draws: 0, matches: 0, totalDmg: 0, totalCasts: 0, bestScore: 0 },
+};
+let save = (() => {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return JSON.parse(JSON.stringify(DEFAULT_SAVE));
+    const s = JSON.parse(raw);
+    // Migrate / sanitize
+    s.deck = Array.isArray(s.deck) && s.deck.length === 8 && s.deck.every(id => G[id]) ? s.deck : DEFAULT_DECK.slice();
+    s.difficulty = ['easy', 'normal', 'hard'].includes(s.difficulty) ? s.difficulty : 'normal';
+    s.lifetime = Object.assign({ wins: 0, losses: 0, draws: 0, matches: 0, totalDmg: 0, totalCasts: 0, bestScore: 0 }, s.lifetime || {});
+    return s;
+  } catch (e) { return JSON.parse(JSON.stringify(DEFAULT_SAVE)); }
+})();
+function persistSave() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) {} }
+setActiveTemplates(save.deck);
 
 // ═══════════════════════════════════════════════════════════
 // AUDIO
@@ -239,6 +220,8 @@ function fireSE(glyphId, tier) {
 }
 function hitSE() { beep(80, 0.15, 'sawtooth', 0.18); beep(160, 0.06, 'square', 0.10); }
 function unfireSE() { beep(120, 0.05, 'square', 0.04); }
+function clickSE() { beep(660, 0.04, 'square', 0.06); }
+function comboSE() { beep(880, 0.08, 'square', 0.14); beep(1320, 0.12, 'square', 0.10); }
 
 // ═══════════════════════════════════════════════════════════
 // SCORE TIERS
@@ -248,7 +231,78 @@ function tierMult(t) { return t === 'weak' ? 0.5 : t === 'critical' ? 1.5 : 1.0;
 function tierColor(t) { return t === 'critical' ? '#ffdd44' : t === 'normal' ? '#7df9ff' : t === 'weak' ? '#888' : '#a44'; }
 
 // ═══════════════════════════════════════════════════════════
-// CAST RESOLUTION + STATUS / EFFECTS
+// SYNERGY GATING (Sprint 1-A3)
+// Required-combo glyphs check prep state. comboMet returns
+// { ok, partial, hint } where partial means cast still fires but
+// at reduced effect.
+// ═══════════════════════════════════════════════════════════
+function recentCast(c, ids, withinSec) {
+  if (!c.recentCasts) return false;
+  for (const r of c.recentCasts) {
+    if (ids.includes(r.id) && (state.battleClock - r.t) <= withinSec) return true;
+  }
+  return false;
+}
+function checkComboGate(c, t, glyphId) {
+  switch (glyphId) {
+    case 'doubleburst':
+      return recentCast(c, ['fireball', 'flame'], 3) ? { ok: true, hint: 'FIRE-PREPARED' } : { ok: false, partial: 0.5, hint: 'NEEDS FIRE PREP (×0.5)' };
+    case 'immortal':
+      return recentCast(c, ['barrier', 'reflect'], 4) ? { ok: true, hint: 'DEFENSE-PREPARED' } : { ok: false, partial: 0.5, hint: 'NEEDS DEF PREP (½ DUR)' };
+    case 'reverse': {
+      const enemyBuffed = (t.barrier > 0 || t.reflectNext > 0 || t.mirrorNext > 0 || t.doubleNext > 0 || t.halveNext > 0 || t.fastMana > 0 || t.invuln > 0);
+      return enemyBuffed ? { ok: true, hint: 'BUFF DETECTED' } : { ok: false, partial: 0, hint: 'NEEDS ENEMY BUFF' };
+    }
+    case 'vengeance':
+      return c.hp < c.hpMax / 2 ? { ok: true, hint: 'WOUNDED' } : { ok: false, partial: 0.5, hint: 'NEEDS HP<50% (½ COUNTER)' };
+    case 'manazone':
+    case 'resonance':
+    case 'trapset':
+      return { ok: true, hint: '' };
+    case 'trigger':
+      return c.traps > 0 ? { ok: true, hint: '' } : { ok: false, partial: 0, hint: 'NO TRAP' };
+    default:
+      return { ok: true, hint: '' };
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// GAME STATE
+// ═══════════════════════════════════════════════════════════
+const initialPlayer = (side, x) => ({
+  side, x, y: 480, name: side === 'left' ? '1P' : 'AI',
+  hp: 100, hpMax: 100, mana: 100, manaMax: 100,
+  barrier: 0, parry: 0, invuln: 0, reflectNext: 0, mirrorNext: 0, doubleNext: 0, halveNext: 0,
+  burn: 0, burnDmg: 0, stun: 0, slowMana: 0, fastMana: 0, manaLock: 0, gravWeak: 0,
+  traps: 0, vengeance: 0,
+  lastCast: null, lastCastFlash: 0,
+  recentCasts: [], // { id, t (battleClock seconds) }
+});
+const initialMatchStats = () => ({ casts: 0, dmgDealt: 0, dmgTaken: 0, maxScore: 0, combosTriggered: 0, hits: 0 });
+const newBattleState = () => ({
+  p1: initialPlayer('left', 130),
+  ai: initialPlayer('right', 830),
+  matchTime: 90.0,
+  battleClock: 0,         // seconds since match start (monotonic)
+  suddenDeath: false,
+  suddenDeathTime: 30.0,
+  gameOver: false, winner: null,
+  effects: [], projectiles: [],
+  scoreFeedback: null, drawTrail: [],
+  bgPulse: 0, shakeFrames: 0, shakeAmp: 0, flashAlpha: 0,
+  matchStats: initialMatchStats(),
+});
+
+let scene = 'menu';   // 'menu' | 'deck' | 'difficulty' | 'battle' | 'result'
+let state = newBattleState();
+let aiCooldown = 2.5;
+// Deck-builder transient state
+let deckEditing = save.deck.slice();
+// Menu hover state
+let pointerX = 0, pointerY = 0;
+
+// ═══════════════════════════════════════════════════════════
+// CAST RESOLUTION
 // ═══════════════════════════════════════════════════════════
 function applyDamage(target, dmg, opts) {
   opts = opts || {};
@@ -265,52 +319,75 @@ function applyDamage(target, dmg, opts) {
     return applyDamage(opts.attacker, dmg, { attacker: target });
   }
   if (target.barrier > 0) { pushEffect({ type: 'barrierHit', who: target, life: 18 }); return 0; }
-  // gravWeak buff = caster's previous gravorb. attacker-side flag, applied when attacker has it
   if (opts.attacker && opts.attacker.gravWeak > 0) { dmg *= 1.3; opts.attacker.gravWeak = 0; }
-  // Receiver-side debuff like burn dmg multiplier? (no for now)
   target.hp = Math.max(0, target.hp - dmg);
   state.shakeFrames = 12; state.shakeAmp = 6;
   state.flashAlpha = Math.max(state.flashAlpha, 0.18);
   hitSE();
   pushEffect({ type: 'hit', x: target.x, y: target.y - 30, life: 24, color: '#ff4488' });
+  // Stats
+  if (target === state.ai) { state.matchStats.dmgDealt += dmg; state.matchStats.hits++; }
+  else state.matchStats.dmgTaken += dmg;
   triggerVengeance(target, opts.attacker);
   if (target.hp <= 0 && !state.gameOver) endMatch(target === state.p1 ? 'ai' : 'p1');
   return dmg;
 }
 function triggerVengeance(target, attacker) {
   if (!attacker || target.vengeance <= 0) return;
+  const counter = target.vengeance;     // 0 = none, 0.5 = partial, 1 = full
   target.vengeance = 0;
-  // Counter: 30 dmg, fired back
-  setTimeout(() => { if (!state.gameOver) { applyDamage(attacker, 30, { attacker: target }); pushEffect({ type: 'vengeanceFlash', who: attacker, life: 24 }); beep(220, 0.15, 'sawtooth', 0.15); } }, 200);
+  const dmg = 30 * counter;
+  if (dmg <= 0) return;
+  setTimeout(() => { if (!state.gameOver) { applyDamage(attacker, dmg, { attacker: target }); pushEffect({ type: 'vengeanceFlash', who: attacker, life: 24 }); beep(220, 0.15, 'sawtooth', 0.15); } }, 200);
 }
 function castGlyph(casterKey, glyphId, score, tier) {
   const c = state[casterKey], otherKey = casterKey === 'p1' ? 'ai' : 'p1', t = state[otherKey];
   const def = G[glyphId]; if (!def) return;
-  // Mana lock check
   if (c.manaLock > 0) {
     state.scoreFeedback = { glyphId, score, tier, fired: false, reason: 'MANA LOCKED', caster: casterKey, life: 80 };
     unfireSE(); return;
   }
-  // Mana cost (apply halveNext)
   let manaCost = def.mana;
   if (c.halveNext > 0) { manaCost = Math.ceil(manaCost / 2); c.halveNext = 0; }
   if (c.mana < manaCost) {
     state.scoreFeedback = { glyphId, score, tier, fired: false, reason: 'NO MANA', caster: casterKey, life: 80 };
     unfireSE(); return;
   }
+  // Synergy gate
+  const gate = checkComboGate(c, t, glyphId);
+  if (!gate.ok && gate.partial === 0) {
+    // Block: spend mana but no effect (e.g., trigger without trap, reverse without enemy buff)
+    c.mana -= manaCost;
+    state.scoreFeedback = { glyphId, score, tier, fired: false, reason: gate.hint, caster: casterKey, life: 80 };
+    unfireSE();
+    return;
+  }
   c.mana -= manaCost;
   c.lastCast = glyphId;
   c.lastCastFlash = 60;
-  c.lastFireGlyph = glyphId;
-  c.lastFireTimer = 0;
+  c.recentCasts.push({ id: glyphId, t: state.battleClock });
+  // keep last 8 casts
+  if (c.recentCasts.length > 8) c.recentCasts.shift();
+
   let mult = tierMult(tier);
-  // Self-buff "doubleNext" doubles dmg on the NEXT attack (not the cast that activates it)
-  // applied at attack-resolution time
   if (def.cat === 'attack' && c.doubleNext > 0) { mult *= 2; c.doubleNext = 0; }
-  state.scoreFeedback = { glyphId, score, tier, fired: true, caster: casterKey, life: 80 };
+  // Required-combo partial penalty
+  if (!gate.ok && gate.partial != null) mult *= gate.partial;
+  if (gate.ok && gate.hint) {
+    // Successful combo
+    state.matchStats.combosTriggered++;
+    if (casterKey === 'p1') comboSE();
+    pushEffect({ type: 'comboFlash', who: c, life: 40, hint: gate.hint });
+  }
+  state.scoreFeedback = { glyphId, score, tier, fired: true, caster: casterKey, life: 80, comboHint: gate.hint };
   fireSE(glyphId, tier);
   if (tier === 'critical') state.flashAlpha = Math.max(state.flashAlpha, 0.22);
-  // Mirror: if next glyph after mirror, fire effect twice (here mark and consume on this cast)
+  // Stats
+  if (casterKey === 'p1') {
+    state.matchStats.casts++;
+    if (score > state.matchStats.maxScore) state.matchStats.maxScore = score;
+  }
+  // Mirror: next non-defense glyph fires twice
   const fireTimes = c.mirrorNext > 0 && def.cat !== 'defense' ? (c.mirrorNext = 0, 2) : 1;
   for (let i = 0; i < fireTimes; i++) resolveGlyphEffect(c, t, casterKey, otherKey, def, mult, glyphId);
 }
@@ -333,20 +410,18 @@ function resolveGlyphEffect(c, t, ck, ok, def, mult, glyphId) {
       break;
     case 'gravorb':
       pushEffect({ type: 'boltBeam', from: c, to: t, life: 14, color: def.color, dmg: def.dmg * mult, applied: false, attacker: c });
-      c.gravWeak = 1; // next attack +30%
+      c.gravWeak = 1;
       break;
     case 'lightnet':
       pushEffect({ type: 'netHit', who: t, life: 30, color: def.color, dmg: def.dmg * mult, applied: false, attacker: c });
       t.stun = Math.max(t.stun, 1.5 * mult);
       break;
     case 'flame':
-      // Mini direct dmg + apply burn
       pushEffect({ type: 'flameBurst', from: c, to: t, life: 22, color: def.color, dmg: def.dmg * mult, applied: false, attacker: c });
       t.burn = Math.max(t.burn, 3.0 * mult);
-      t.burnDmg = Math.max(t.burnDmg, 3 * mult); // per 0.5s
+      t.burnDmg = Math.max(t.burnDmg, 3 * mult);
       break;
     case 'shadowstrike':
-      // Quick teleport + strike
       pushEffect({ type: 'tpFlash', who: c, life: 12 });
       pushEffect({ type: 'tpFlash', who: t, life: 12 });
       pushEffect({ type: 'boltBeam', from: c, to: t, life: 14, color: def.color, dmg: def.dmg * mult, applied: false, attacker: c });
@@ -355,97 +430,43 @@ function resolveGlyphEffect(c, t, ck, ok, def, mult, glyphId) {
       pushEffect({ type: 'megaBoom', x: t.x, y: t.y - 30, life: 36, color: def.color, dmg: def.dmg * mult, applied: false, attacker: c, target: t });
       state.flashAlpha = Math.max(state.flashAlpha, 0.35);
       break;
-    case 'barrier':
-      c.barrier = 3.0 * mult;
-      pushEffect({ type: 'barrierStart', who: c, life: 30 });
-      break;
-    case 'reflect':
-      c.reflectNext = 1;
-      pushEffect({ type: 'reflectStart', who: c, life: 30 });
-      break;
-    case 'heal':
-      c.hp = Math.min(c.hpMax, c.hp + 30 * mult);
-      pushEffect({ type: 'healAura', who: c, life: 50 });
-      break;
-    case 'cleanse':
-      c.burn = 0; c.burnDmg = 0; c.stun = 0; c.slowMana = 0; c.manaLock = 0;
-      pushEffect({ type: 'cleanseAura', who: c, life: 30 });
-      break;
-    case 'mirror':
-      c.mirrorNext = 1;
-      pushEffect({ type: 'mirrorStart', who: c, life: 30 });
-      break;
-    case 'immortal':
-      c.invuln = 3.0 * mult;
-      pushEffect({ type: 'invulnStart', who: c, life: 36 });
-      break;
-    case 'manadrain':
+    case 'barrier':       c.barrier = 3.0 * mult; pushEffect({ type: 'barrierStart', who: c, life: 30 }); break;
+    case 'reflect':       c.reflectNext = 1; pushEffect({ type: 'reflectStart', who: c, life: 30 }); break;
+    case 'heal':          c.hp = Math.min(c.hpMax, c.hp + 30 * mult); pushEffect({ type: 'healAura', who: c, life: 50 }); break;
+    case 'cleanse':       c.burn = 0; c.burnDmg = 0; c.stun = 0; c.slowMana = 0; c.manaLock = 0; pushEffect({ type: 'cleanseAura', who: c, life: 30 }); break;
+    case 'mirror':        c.mirrorNext = 1; pushEffect({ type: 'mirrorStart', who: c, life: 30 }); break;
+    case 'immortal':      c.invuln = 3.0 * mult; pushEffect({ type: 'invulnStart', who: c, life: 36 }); break;
+    case 'manadrain': {
       const drain = Math.min(t.mana, 20 * mult);
       t.mana -= drain;
       c.mana = Math.min(c.manaMax, c.mana + drain * 0.5);
       pushEffect({ type: 'manaDrainBeam', from: c, to: t, life: 20, color: def.color });
       break;
-    case 'selfbuff':
-      c.doubleNext = 1;
-      pushEffect({ type: 'powerStart', who: c, life: 30 });
+    }
+    case 'selfbuff':      c.doubleNext = 1; pushEffect({ type: 'powerStart', who: c, life: 30 }); break;
+    case 'teleport':      c.parry = 0.5 * mult; pushEffect({ type: 'tpFlash', who: c, life: 18 }); break;
+    case 'windrun':       c.fastMana = Math.max(c.fastMana, 3.0 * mult); pushEffect({ type: 'windAura', who: c, life: 40 }); break;
+    case 'timeslow':      t.slowMana = Math.max(t.slowMana, 3.0 * mult); pushEffect({ type: 'slowAura', who: t, life: 40 }); break;
+    case 'shadowwalk':    c.parry = 0.6 * mult; c.doubleNext = 1; pushEffect({ type: 'tpFlash', who: c, life: 18 }); break;
+    case 'trapset':       c.traps = Math.min(2, c.traps + 1); pushEffect({ type: 'trapPlace', who: c, life: 40 }); break;
+    case 'trigger': {
+      const dmgEach = 25 * mult;
+      for (let i = 0; i < c.traps; i++) applyDamage(t, dmgEach, { attacker: c });
+      pushEffect({ type: 'trapBoom', x: t.x, y: t.y - 30, life: 30, color: def.color });
+      c.traps = 0;
       break;
-    case 'teleport':
-      c.parry = 0.5 * mult;     // brief evade window
-      pushEffect({ type: 'tpFlash', who: c, life: 18 });
-      break;
-    case 'windrun':
-      c.fastMana = Math.max(c.fastMana, 3.0 * mult);
-      pushEffect({ type: 'windAura', who: c, life: 40 });
-      break;
-    case 'timeslow':
-      t.slowMana = Math.max(t.slowMana, 3.0 * mult);
-      pushEffect({ type: 'slowAura', who: t, life: 40 });
-      break;
-    case 'shadowwalk':
-      c.parry = 0.6 * mult;
-      c.doubleNext = 1;
-      pushEffect({ type: 'tpFlash', who: c, life: 18 });
-      break;
-    case 'trapset':
-      c.traps = Math.min(2, c.traps + 1);
-      pushEffect({ type: 'trapPlace', who: c, life: 40 });
-      break;
-    case 'trigger':
-      if (c.traps > 0) {
-        const dmgEach = 25 * mult;
-        for (let i = 0; i < c.traps; i++) applyDamage(t, dmgEach, { attacker: c });
-        pushEffect({ type: 'trapBoom', x: t.x, y: t.y - 30, life: 30, color: def.color });
-        c.traps = 0;
-      } else {
-        pushEffect({ type: 'unfire', who: c, life: 16 });
-      }
-      break;
-    case 'manazone':
-      c.fastMana = Math.max(c.fastMana, 5.0 * mult);
-      pushEffect({ type: 'sigilAura', who: c, life: 60 });
-      break;
-    case 'resonance':
-      c.halveNext = 1;
-      pushEffect({ type: 'resAura', who: c, life: 30 });
-      break;
-    case 'parry':
-      c.parry = 1.0 * mult;
-      pushEffect({ type: 'parryStart', who: c, life: 30 });
-      break;
-    case 'counterspell':
-      t.manaLock = Math.max(t.manaLock, 1.0 * mult);
-      pushEffect({ type: 'lockBeam', from: c, to: t, life: 22, color: def.color });
-      break;
-    case 'reverse':
-      // Steal: copy enemy buffs to self, clear theirs
+    }
+    case 'manazone':      c.fastMana = Math.max(c.fastMana, 5.0 * mult); pushEffect({ type: 'sigilAura', who: c, life: 60 }); break;
+    case 'resonance':     c.halveNext = 1; pushEffect({ type: 'resAura', who: c, life: 30 }); break;
+    case 'parry':         c.parry = 1.0 * mult; pushEffect({ type: 'parryStart', who: c, life: 30 }); break;
+    case 'counterspell':  t.manaLock = Math.max(t.manaLock, 1.0 * mult); pushEffect({ type: 'lockBeam', from: c, to: t, life: 22, color: def.color }); break;
+    case 'reverse': {
       const fields = ['barrier', 'parry', 'invuln', 'reflectNext', 'mirrorNext', 'doubleNext', 'halveNext', 'fastMana'];
       for (const f of fields) { c[f] = Math.max(c[f], t[f]); t[f] = 0; }
       pushEffect({ type: 'stealBeam', from: c, to: t, life: 24 });
       break;
-    case 'vengeance':
-      c.vengeance = 1;
-      pushEffect({ type: 'vengeanceStart', who: c, life: 30 });
-      break;
+    }
+    case 'vengeance':     c.vengeance = mult >= 1 ? 1 : 0.5; pushEffect({ type: 'vengeanceStart', who: c, life: 30 }); break;
   }
 }
 function pushEffect(e) { state.effects.push(e); }
@@ -455,6 +476,92 @@ function endMatch(winnerKey) {
   beep(80, 0.6, 'sawtooth', 0.15);
   setTimeout(() => beep(440, 0.3, 'square', 0.12), 200);
   setTimeout(() => beep(660, 0.3, 'square', 0.12), 380);
+  // Lifetime stats
+  save.lifetime.matches++;
+  if (winnerKey === 'p1') save.lifetime.wins++;
+  else if (winnerKey === 'ai') save.lifetime.losses++;
+  else save.lifetime.draws++;
+  save.lifetime.totalDmg += state.matchStats.dmgDealt;
+  save.lifetime.totalCasts += state.matchStats.casts;
+  if (state.matchStats.maxScore > save.lifetime.bestScore) save.lifetime.bestScore = state.matchStats.maxScore;
+  persistSave();
+  // Scene auto-transitions to result after a brief delay (handled in update)
+}
+
+// ═══════════════════════════════════════════════════════════
+// AI TIERS (Sprint 1-A5)
+// ═══════════════════════════════════════════════════════════
+const AI_POOL_EASY = ['bolt', 'fireball', 'barrier', 'heal', 'parry'];
+const AI_POOL_NORMAL = ['bolt', 'fireball', 'icicle', 'windblade', 'gravorb', 'lightnet', 'flame', 'shadowstrike', 'barrier', 'heal', 'cleanse', 'manadrain', 'selfbuff', 'parry', 'windrun', 'timeslow', 'counterspell', 'reflect'];
+const AI_POOL_HARD = G_ORDER.slice();
+function aiPickHard() {
+  const ai = state.ai, p1 = state.p1, mana = ai.mana;
+  // 1) traps + trigger combo
+  if (ai.traps > 0 && p1.parry === 0 && p1.barrier === 0 && mana >= 10 && Math.random() < 0.6) return 'trigger';
+  if (ai.traps < 2 && p1.hp > 50 && mana >= 30 && Math.random() < 0.18) return 'trapset';
+  // 2) Heal at low HP
+  if (ai.hp < 35 && mana >= 40 && Math.random() < 0.7) return 'heal';
+  // 3) Vengeance setup if wounded
+  if (ai.hp < 50 && ai.vengeance === 0 && mana >= 70 && Math.random() < 0.25) return 'vengeance';
+  // 4) Buff prep then doubleburst
+  const recentlyFire = recentCast(ai, ['fireball', 'flame'], 3);
+  if (recentlyFire && mana >= 80 && Math.random() < 0.55) return 'doubleburst';
+  if (!recentlyFire && mana >= 35 && Math.random() < 0.18) return 'fireball';
+  // 5) Defense prep then immortal
+  const recentlyDef = recentCast(ai, ['barrier', 'reflect'], 4);
+  if (ai.hp < 60 && recentlyDef && mana >= 70 && Math.random() < 0.4) return 'immortal';
+  // 6) Drain when player has high mana
+  if (p1.mana > 60 && mana >= 35 && Math.random() < 0.3) return 'manadrain';
+  // 7) Reverse when player buffed
+  const p1Buffed = (p1.barrier > 0 || p1.doubleNext > 0 || p1.mirrorNext > 0 || p1.fastMana > 0 || p1.reflectNext > 0);
+  if (p1Buffed && mana >= 60 && Math.random() < 0.4) return 'reverse';
+  // 8) Counter when player drawing
+  if (drawing && mana >= 40 && Math.random() < 0.18) return 'counterspell';
+  // 9) Self empower → big attack
+  if (ai.doubleNext > 0 && mana >= 50) return 'beam';
+  if (ai.doubleNext === 0 && mana >= 45 && Math.random() < 0.18) return 'selfbuff';
+  // 10) Apply pressure
+  if (p1.hp < 25 && mana >= 25) {
+    const burst = ['bolt', 'fireball', 'beam', 'doubleburst'].filter(id => mana >= G[id].mana);
+    return burst[Math.floor(Math.random() * burst.length)];
+  }
+  // Fallback
+  return null;
+}
+function pickAI(diff) {
+  const pool = diff === 'easy' ? AI_POOL_EASY : diff === 'hard' ? AI_POOL_HARD : AI_POOL_NORMAL;
+  const ai = state.ai;
+  if (diff === 'hard') {
+    const strategic = aiPickHard();
+    if (strategic && ai.mana >= G[strategic].mana) return strategic;
+  }
+  // Heuristic baseline
+  if (ai.hp < 35 && ai.mana >= 40 && Math.random() < (diff === 'easy' ? 0.55 : 0.7)) return 'heal';
+  if (state.p1.hp < 25 && ai.mana >= 25) return ['bolt', 'fireball'].find(id => ai.mana >= G[id].mana) || pool[0];
+  const candidates = pool.filter(id => G[id] && ai.mana >= G[id].mana);
+  if (candidates.length === 0) return null;
+  return candidates[Math.floor(Math.random() * candidates.length)];
+}
+function aiScoreFor(diff) {
+  if (diff === 'easy') return 0.55 + Math.random() * 0.20;   // 0.55–0.75
+  if (diff === 'hard') return 0.80 + Math.random() * 0.18;   // 0.80–0.98
+  return 0.62 + Math.random() * 0.30;                          // 0.62–0.92
+}
+function aiCooldownFor(diff) {
+  if (diff === 'easy') return 4.0 + Math.random() * 2.0;
+  if (diff === 'hard') return 1.8 + Math.random() * 1.2;
+  return 2.4 + Math.random() * 2.0;
+}
+function updateAI(dt) {
+  if (state.gameOver) return;
+  if (state.ai.stun > 0 || state.ai.manaLock > 0) { aiCooldown = Math.max(aiCooldown, 0.5); return; }
+  aiCooldown -= dt;
+  if (aiCooldown > 0) return;
+  const pick = pickAI(save.difficulty);
+  if (!pick) { aiCooldown = 1.0; return; }
+  const score = aiScoreFor(save.difficulty);
+  castGlyph('ai', pick, score, scoreToTier(score));
+  aiCooldown = aiCooldownFor(save.difficulty);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -462,19 +569,31 @@ function endMatch(winnerKey) {
 // ═══════════════════════════════════════════════════════════
 let drawing = false, stroke = [];
 function canvasCoords(ev) { const r = canvas.getBoundingClientRect(); return { x: (ev.clientX - r.left) * (canvas.width / r.width), y: (ev.clientY - r.top) * (canvas.height / r.height) }; }
-canvas.addEventListener('pointerdown', e => {
-  if (state.gameOver || state.bookOpen) return;
-  ensureAudio();
-  drawing = true; stroke = [canvasCoords(e)]; state.drawTrail = stroke;
-  startDrawTone();
-  canvas.setPointerCapture && canvas.setPointerCapture(e.pointerId);
-  e.preventDefault();
-});
+
 canvas.addEventListener('pointermove', e => {
-  if (!drawing) return;
-  const p = canvasCoords(e), last = stroke[stroke.length - 1];
-  if (Math.hypot(p.x - last.x, p.y - last.y) > 2) { stroke.push(p); if (drawTone) drawTone.o.frequency.value = 200 + Math.min(800, Math.hypot(p.x - last.x, p.y - last.y) * 40); }
-  e.preventDefault();
+  const p = canvasCoords(e); pointerX = p.x; pointerY = p.y;
+  if (drawing) {
+    const last = stroke[stroke.length - 1];
+    if (Math.hypot(p.x - last.x, p.y - last.y) > 2) {
+      stroke.push(p);
+      if (drawTone) drawTone.o.frequency.value = 200 + Math.min(800, Math.hypot(p.x - last.x, p.y - last.y) * 40);
+    }
+    e.preventDefault();
+  }
+});
+canvas.addEventListener('pointerdown', e => {
+  ensureAudio();
+  const p = canvasCoords(e); pointerX = p.x; pointerY = p.y;
+  if (scene === 'menu') { handleMenuClick(p); return; }
+  if (scene === 'deck') { handleDeckClick(p); return; }
+  if (scene === 'difficulty') { handleDifficultyClick(p); return; }
+  if (scene === 'result') { handleResultClick(p); return; }
+  if (scene === 'battle' && !state.gameOver) {
+    drawing = true; stroke = [p]; state.drawTrail = stroke;
+    startDrawTone();
+    canvas.setPointerCapture && canvas.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  }
 });
 function endStroke(e) {
   if (!drawing) return;
@@ -491,55 +610,128 @@ canvas.addEventListener('pointerup', endStroke);
 canvas.addEventListener('pointercancel', endStroke);
 canvas.addEventListener('pointerleave', e => { if (drawing) endStroke(e); });
 window.addEventListener('keydown', e => {
-  if (e.key === ' ' || e.key === 'Enter') { if (state.gameOver) restart(); e.preventDefault(); }
-  if (e.key === 'r' || e.key === 'R') restart();
-  if (e.key === 'Tab') { state.bookOpen = !state.bookOpen; e.preventDefault(); }
-  if (e.key === 'Escape') state.bookOpen = false;
+  if (e.key === 'Escape') {
+    if (scene === 'deck') { goMenu(); e.preventDefault(); return; }
+    if (scene === 'difficulty') { goMenu(); e.preventDefault(); return; }
+    if (scene === 'result') { goMenu(); e.preventDefault(); return; }
+  }
+  if (e.key === ' ' || e.key === 'Enter') {
+    if (scene === 'result') { startBattle(); e.preventDefault(); }
+    else if (scene === 'menu') { startBattle(); e.preventDefault(); }
+  }
 });
-function restart() { state = newState(); aiCooldown = 2.5; }
 
 // ═══════════════════════════════════════════════════════════
-// AI (still dummy — Sprint 1-A5 will tier this)
+// SCENE NAVIGATION
 // ═══════════════════════════════════════════════════════════
-const AI_POOL = ['bolt', 'fireball', 'icicle', 'windblade', 'gravorb', 'lightnet', 'flame', 'shadowstrike', 'barrier', 'heal', 'cleanse', 'manadrain', 'selfbuff', 'parry', 'windrun', 'timeslow', 'counterspell'];
-function updateAI(dt) {
-  if (state.gameOver) return;
-  if (state.ai.stun > 0 || state.ai.manaLock > 0) { aiCooldown = Math.max(aiCooldown, 0.5); return; }
-  aiCooldown -= dt;
-  if (aiCooldown > 0) return;
-  let pick;
-  if (state.ai.hp < 35 && state.ai.mana >= 40 && Math.random() < 0.65) pick = 'heal';
-  else if (state.p1.hp < 25 && state.ai.mana >= 25) pick = ['bolt', 'fireball', 'beam', 'doubleburst'][Math.floor(Math.random() * 4)];
-  else if (state.p1.barrier > 0 && state.ai.mana >= 30 && Math.random() < 0.4) pick = 'manadrain';
-  else pick = AI_POOL[Math.floor(Math.random() * AI_POOL.length)];
-  if (!G[pick] || state.ai.mana < G[pick].mana) {
-    const ok = AI_POOL.filter(id => state.ai.mana >= G[id].mana);
-    if (ok.length === 0) { aiCooldown = 1.0; return; }
-    pick = ok[Math.floor(Math.random() * ok.length)];
+function goMenu() { scene = 'menu'; updateHint(); }
+function goDeck() { deckEditing = save.deck.slice(); scene = 'deck'; updateHint(); }
+function goDifficulty() { scene = 'difficulty'; updateHint(); }
+function startBattle() {
+  state = newBattleState();
+  aiCooldown = 1.5;
+  scene = 'battle';
+  updateHint();
+}
+function gotoResult() { scene = 'result'; updateHint(); }
+function updateHint() {
+  if (scene === 'menu') hintEl.textContent = 'CLICK BUTTONS · ENTER FOR QUICK BATTLE';
+  else if (scene === 'deck') hintEl.textContent = 'CLICK TO TOGGLE · 8 OF 30 · ESC TO BACK';
+  else if (scene === 'difficulty') hintEl.textContent = 'CLICK A LEVEL · ESC TO BACK';
+  else if (scene === 'battle') hintEl.textContent = 'DRAW WITH MOUSE OR FINGER · 8 GLYPHS IN DECK';
+  else if (scene === 'result') hintEl.textContent = 'CLICK BUTTON · SPACE TO REMATCH · ESC TO MENU';
+}
+updateHint();
+
+// ═══════════════════════════════════════════════════════════
+// CLICK HANDLERS
+// ═══════════════════════════════════════════════════════════
+function inRect(p, x, y, w, h) { return p.x >= x && p.x <= x + w && p.y >= y && p.y <= y + h; }
+function handleMenuClick(p) {
+  // Battle button
+  if (inRect(p, 380, 360, 200, 60)) { clickSE(); startBattle(); return; }
+  // Deck
+  if (inRect(p, 280, 440, 180, 50)) { clickSE(); goDeck(); return; }
+  // Difficulty
+  if (inRect(p, 500, 440, 180, 50)) { clickSE(); goDifficulty(); return; }
+}
+function handleDeckClick(p) {
+  // Save / cancel buttons
+  if (inRect(p, 720, 580, 200, 40)) {
+    if (deckEditing.length === 8) { clickSE(); save.deck = deckEditing.slice(); persistSave(); setActiveTemplates(save.deck); goMenu(); }
+    return;
   }
-  const score = 0.60 + Math.random() * 0.32;
-  castGlyph('ai', pick, score, scoreToTier(score));
-  aiCooldown = 2.4 + Math.random() * 2.0;
+  if (inRect(p, 40, 580, 200, 40)) { clickSE(); goMenu(); return; }
+  if (inRect(p, 380, 580, 200, 40)) { clickSE(); deckEditing = DEFAULT_DECK.slice(); return; }
+  // Grid (6 cols × 5 rows)
+  const cols = 6, cellW = 145, cellH = 92, startX = (960 - cols * cellW) / 2, startY = 70;
+  for (let i = 0; i < G_ORDER.length; i++) {
+    const cx = startX + (i % cols) * cellW, cy = startY + Math.floor(i / cols) * cellH;
+    if (inRect(p, cx + 2, cy + 2, cellW - 4, cellH - 4)) {
+      const id = G_ORDER[i];
+      const idx = deckEditing.indexOf(id);
+      if (idx >= 0) { deckEditing.splice(idx, 1); clickSE(); }
+      else if (deckEditing.length < 8) { deckEditing.push(id); clickSE(); }
+      else { unfireSE(); }
+      return;
+    }
+  }
+}
+function handleDifficultyClick(p) {
+  const opts = [['easy', 280], ['normal', 480], ['hard', 680]];
+  for (const [diff, cx] of opts) {
+    if (inRect(p, cx - 80, 280, 160, 100)) { clickSE(); save.difficulty = diff; persistSave(); goMenu(); return; }
+  }
+  if (inRect(p, 380, 480, 200, 40)) { clickSE(); goMenu(); return; }
+}
+function handleResultClick(p) {
+  if (inRect(p, 280, 520, 180, 50)) { clickSE(); startBattle(); return; }
+  if (inRect(p, 500, 520, 180, 50)) { clickSE(); goMenu(); return; }
 }
 
 // ═══════════════════════════════════════════════════════════
 // UPDATE
 // ═══════════════════════════════════════════════════════════
 let burnTickAcc = { p1: 0, ai: 0 };
+let postGameClock = 0;
 function update(dt) {
   state.bgPulse += dt;
-  if (state.gameOver) { state.flashAlpha *= 0.92; if (state.shakeFrames > 0) state.shakeFrames--; return; }
-  if (state.bookOpen) return;
-  state.matchTime -= dt;
-  if (state.matchTime <= 0) { state.matchTime = 0; endMatch(state.p1.hp >= state.ai.hp ? 'p1' : 'ai'); return; }
+  if (scene !== 'battle') return;
+  if (state.gameOver) {
+    state.flashAlpha *= 0.92;
+    if (state.shakeFrames > 0) state.shakeFrames--;
+    postGameClock += dt;
+    if (postGameClock > 2.2) gotoResult();
+    return;
+  }
+  postGameClock = 0;
+  state.battleClock += dt;
+  // Time / sudden death
+  if (!state.suddenDeath) {
+    state.matchTime -= dt;
+    if (state.matchTime <= 0) {
+      state.matchTime = 0;
+      if (state.p1.hp === state.ai.hp) {
+        state.suddenDeath = true;
+      } else {
+        endMatch(state.p1.hp > state.ai.hp ? 'p1' : 'ai');
+        return;
+      }
+    }
+  } else {
+    state.suddenDeathTime -= dt;
+    if (state.suddenDeathTime <= 0) {
+      endMatch(state.p1.hp >= state.ai.hp ? (state.p1.hp === state.ai.hp ? 'draw' : 'p1') : 'ai');
+      return;
+    }
+  }
+  // Mana regen (halved during sudden death)
   for (const k of ['p1', 'ai']) {
     const p = state[k];
-    // Mana regen with status modifiers
-    let regen = 5;
+    let regen = state.suddenDeath ? 0 : 5;
     if (p.fastMana > 0) regen += 5;
     if (p.slowMana > 0) regen *= 0.5;
     p.mana = Math.min(p.manaMax, p.mana + regen * dt);
-    // Status timers (in seconds)
     p.barrier = Math.max(0, p.barrier - dt);
     p.parry = Math.max(0, p.parry - dt);
     p.invuln = Math.max(0, p.invuln - dt);
@@ -547,13 +739,13 @@ function update(dt) {
     p.slowMana = Math.max(0, p.slowMana - dt);
     p.stun = Math.max(0, p.stun - dt);
     p.manaLock = Math.max(0, p.manaLock - dt);
-    p.lastFireTimer += dt;
-    // Burn DOT
     if (p.burn > 0) {
       burnTickAcc[k] += dt;
       while (burnTickAcc[k] >= 0.5 && p.burn > 0) {
         burnTickAcc[k] -= 0.5;
         p.hp = Math.max(0, p.hp - p.burnDmg);
+        if (k === 'p1') state.matchStats.dmgTaken += p.burnDmg;
+        else state.matchStats.dmgDealt += p.burnDmg;
         pushEffect({ type: 'burnTick', who: p, life: 14 });
       }
       p.burn = Math.max(0, p.burn - dt);
@@ -562,9 +754,7 @@ function update(dt) {
     }
     if (p.lastCastFlash > 0) p.lastCastFlash--;
   }
-  // AI
   updateAI(dt);
-  // Projectiles
   for (const pr of state.projectiles) {
     pr.t++;
     if (pr.t >= pr.dur) {
@@ -574,9 +764,8 @@ function update(dt) {
     }
   }
   state.projectiles = state.projectiles.filter(pr => pr.t < pr.dur);
-  // Effects with delayed damage application
   for (const ef of state.effects) {
-    if (!ef.applied && ef.dmg && (ef.type === 'boltBeam' || ef.type === 'beamHoming' || ef.type === 'flameBurst' || ef.type === 'megaBoom' || ef.type === 'netHit')) {
+    if (!ef.applied && ef.dmg && ['boltBeam','beamHoming','flameBurst','megaBoom','netHit'].includes(ef.type)) {
       const target = ef.to || ef.target || ef.who;
       if (target) applyDamage(target, ef.dmg, { attacker: ef.attacker });
       ef.applied = true;
@@ -590,29 +779,18 @@ function update(dt) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// RENDER
+// RENDER — SCENE DISPATCH
 // ═══════════════════════════════════════════════════════════
 function render() {
-  const sx = state.shakeFrames > 0 ? (Math.random() - 0.5) * state.shakeAmp : 0;
-  const sy = state.shakeFrames > 0 ? (Math.random() - 0.5) * state.shakeAmp : 0;
-  ctx.save(); ctx.translate(sx, sy);
   drawBackground();
-  drawMage(state.p1, '#7df9ff', false);
-  drawMage(state.ai, '#ff44dd', true);
-  drawStatusAuras(state.p1, '#7df9ff');
-  drawStatusAuras(state.ai, '#ff44dd');
-  drawTraps(state.p1);
-  drawTraps(state.ai);
-  for (const pr of state.projectiles) drawProjectile(pr);
-  for (const ef of state.effects) drawEffect(ef);
-  if (state.drawTrail && state.drawTrail.length >= 2) drawTrail(state.drawTrail, '#7df9ff');
-  drawHUD();
-  if (state.scoreFeedback) drawScoreFeedback(state.scoreFeedback);
-  if (state.bookOpen) drawGlyphBook();
-  if (state.gameOver) drawGameOver();
-  if (state.flashAlpha > 0.01) { ctx.fillStyle = `rgba(255,255,255,${state.flashAlpha})`; ctx.fillRect(0, 0, 960, 640); }
-  ctx.restore();
+  if (scene === 'menu') drawMenu();
+  else if (scene === 'deck') drawDeckBuilder();
+  else if (scene === 'difficulty') drawDifficulty();
+  else if (scene === 'battle') drawBattleScene();
+  else if (scene === 'result') drawResult();
 }
+
+// Background — used by all scenes
 function drawBackground() {
   const bg = ctx.createLinearGradient(0, 0, 0, 640);
   bg.addColorStop(0, '#04060f'); bg.addColorStop(0.5, '#08081a'); bg.addColorStop(1, '#0a0420');
@@ -620,13 +798,166 @@ function drawBackground() {
   ctx.strokeStyle = 'rgba(0,255,255,0.06)'; ctx.lineWidth = 1;
   for (let x = 0; x < 960; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 640); ctx.stroke(); }
   for (let y = 0; y < 640; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(960, y); ctx.stroke(); }
-  const hg = ctx.createLinearGradient(0, 380, 0, 540);
-  hg.addColorStop(0, 'rgba(255,30,180,0.0)'); hg.addColorStop(1, 'rgba(255,30,180,0.18)');
-  ctx.fillStyle = hg; ctx.fillRect(0, 380, 960, 160);
-  ctx.fillStyle = '#000';
-  for (let i = 0; i < 30; i++) { const bw = 18 + (i % 7) * 6, bh = 30 + ((i * 53) % 90); ctx.fillRect(i * 33, 540 - bh, bw, bh); }
-  ctx.fillStyle = 'rgba(0,255,255,0.5)';
-  for (let i = 0; i < 30; i++) { const bx = i * 33 + 4; for (let j = 0; j < 6; j++) { if (((i * 7 + j * 3 + Math.floor(state.bgPulse * 4)) % 11) === 0) ctx.fillRect(bx + (j * 3), 530 - j * 8, 1.5, 1.5); } }
+  if (scene === 'battle' || scene === 'result') {
+    const hg = ctx.createLinearGradient(0, 380, 0, 540);
+    hg.addColorStop(0, 'rgba(255,30,180,0.0)'); hg.addColorStop(1, 'rgba(255,30,180,0.18)');
+    ctx.fillStyle = hg; ctx.fillRect(0, 380, 960, 160);
+    ctx.fillStyle = '#000';
+    for (let i = 0; i < 30; i++) { const bw = 18 + (i % 7) * 6, bh = 30 + ((i * 53) % 90); ctx.fillRect(i * 33, 540 - bh, bw, bh); }
+    ctx.fillStyle = 'rgba(0,255,255,0.5)';
+    for (let i = 0; i < 30; i++) { const bx = i * 33 + 4; for (let j = 0; j < 6; j++) { if (((i * 7 + j * 3 + Math.floor(state.bgPulse * 4)) % 11) === 0) ctx.fillRect(bx + (j * 3), 530 - j * 8, 1.5, 1.5); } }
+  }
+}
+
+// ─── MENU ───
+function drawMenu() {
+  // Title
+  ctx.font = 'bold 80px monospace'; ctx.textAlign = 'center';
+  ctx.fillStyle = '#7df9ff'; ctx.shadowColor = '#7df9ff'; ctx.shadowBlur = 30;
+  ctx.fillText('GLYPH', 480, 160);
+  ctx.fillStyle = '#ff44dd'; ctx.shadowColor = '#ff44dd';
+  ctx.fillText('DUEL', 480, 240);
+  ctx.shadowBlur = 0;
+  ctx.font = '14px monospace'; ctx.fillStyle = '#888';
+  ctx.fillText('— サイバー・ネオン 描画 デュエル —', 480, 280);
+  // Stats
+  const ls = save.lifetime;
+  ctx.font = 'bold 12px monospace'; ctx.fillStyle = '#7df9ff';
+  ctx.fillText(`MATCHES ${ls.matches}  ·  WINS ${ls.wins}  ·  LOSSES ${ls.losses}  ·  BEST ${Math.round(ls.bestScore * 100)}%`, 480, 320);
+  // Battle button (large)
+  drawButton(380, 360, 200, 60, 'BATTLE', inRect({ x: pointerX, y: pointerY }, 380, 360, 200, 60), '#7df9ff');
+  // Sub-buttons
+  drawButton(280, 440, 180, 50, 'DECK · ' + save.deck.length + '/8', inRect({ x: pointerX, y: pointerY }, 280, 440, 180, 50), '#88ff88');
+  drawButton(500, 440, 180, 50, save.difficulty.toUpperCase(), inRect({ x: pointerX, y: pointerY }, 500, 440, 180, 50), '#ffdd44');
+  // Footer
+  ctx.font = '10px monospace'; ctx.fillStyle = '#444';
+  ctx.fillText('PHASE 1A · SPRINT 1-A1 → 1-A5 · 30 GLYPHS · 3-LAYER SYNERGY · 3 AI TIERS', 480, 600);
+}
+function drawButton(x, y, w, h, label, hover, color) {
+  ctx.save();
+  ctx.fillStyle = hover ? 'rgba(20,30,50,0.9)' : 'rgba(10,15,25,0.7)';
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = color; ctx.lineWidth = hover ? 3 : 1.5;
+  ctx.shadowColor = color; ctx.shadowBlur = hover ? 16 : 6;
+  ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+  ctx.shadowBlur = 0;
+  ctx.font = 'bold ' + Math.min(28, h - 22) + 'px monospace';
+  ctx.fillStyle = hover ? '#fff' : color; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(label, x + w / 2, y + h / 2);
+  ctx.textBaseline = 'alphabetic';
+  ctx.restore();
+}
+
+// ─── DECK BUILDER ───
+function drawDeckBuilder() {
+  ctx.font = 'bold 22px monospace'; ctx.textAlign = 'center';
+  ctx.fillStyle = '#7df9ff'; ctx.shadowColor = '#7df9ff'; ctx.shadowBlur = 14;
+  ctx.fillText('DECK · ' + deckEditing.length + ' / 8', 480, 32); ctx.shadowBlur = 0;
+  ctx.font = '11px monospace'; ctx.fillStyle = '#666';
+  ctx.fillText('CLICK GLYPHS TO TOGGLE · 8 EXACTLY TO SAVE', 480, 50);
+  const cols = 6, cellW = 145, cellH = 92, startX = (960 - cols * cellW) / 2, startY = 70;
+  for (let i = 0; i < G_ORDER.length; i++) {
+    const id = G_ORDER[i], g = G[id];
+    const cx = startX + (i % cols) * cellW, cy = startY + Math.floor(i / cols) * cellH;
+    const selected = deckEditing.includes(id);
+    const hover = inRect({ x: pointerX, y: pointerY }, cx + 2, cy + 2, cellW - 4, cellH - 4);
+    ctx.fillStyle = selected ? 'rgba(40,60,80,0.9)' : 'rgba(20,20,30,0.8)';
+    ctx.fillRect(cx + 2, cy + 2, cellW - 4, cellH - 4);
+    ctx.strokeStyle = selected ? '#7df9ff' : (hover ? '#aaa' : g.color);
+    ctx.lineWidth = selected ? 3 : (hover ? 2 : 1);
+    ctx.shadowColor = selected ? '#7df9ff' : 'transparent';
+    ctx.shadowBlur = selected ? 10 : 0;
+    ctx.strokeRect(cx + 2.5, cy + 2.5, cellW - 5, cellH - 5);
+    ctx.shadowBlur = 0;
+    // Selected check
+    if (selected) {
+      const ord = deckEditing.indexOf(id) + 1;
+      ctx.fillStyle = '#7df9ff'; ctx.font = 'bold 12px monospace'; ctx.textAlign = 'right';
+      ctx.fillText('★' + ord, cx + cellW - 8, cy + 16);
+    }
+    // Mini icon
+    ctx.save(); ctx.translate(cx + 22, cy + 26);
+    ctx.strokeStyle = g.color; ctx.lineWidth = 1.6;
+    ctx.shadowColor = g.color; ctx.shadowBlur = 5;
+    drawGlyphIcon(g.shape, 14);
+    ctx.restore();
+    // Text
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 12px monospace';
+    ctx.fillText(g.ja, cx + 44, cy + 22);
+    ctx.fillStyle = CAT_COLOR[g.cat]; ctx.font = '8px monospace';
+    ctx.fillText(CAT_LABEL_JA[g.cat] + ' · ' + g.syn.toUpperCase(), cx + 8, cy + 50);
+    ctx.fillStyle = '#ccc'; ctx.font = '8px monospace';
+    const desc = g.desc.length > 30 ? g.desc.slice(0, 30) + '…' : g.desc;
+    ctx.fillText(desc, cx + 8, cy + 64);
+    ctx.fillStyle = g.color; ctx.font = 'bold 9px monospace';
+    ctx.fillText('M ' + g.mana + (g.dmg ? '  D ' + g.dmg : ''), cx + 8, cy + 80);
+  }
+  // Footer buttons
+  drawButton(40, 580, 200, 40, 'BACK', inRect({ x: pointerX, y: pointerY }, 40, 580, 200, 40), '#888');
+  drawButton(380, 580, 200, 40, 'DEFAULT DECK', inRect({ x: pointerX, y: pointerY }, 380, 580, 200, 40), '#ffdd44');
+  const canSave = deckEditing.length === 8;
+  drawButton(720, 580, 200, 40, canSave ? 'SAVE & BACK' : 'NEED ' + (8 - deckEditing.length), inRect({ x: pointerX, y: pointerY }, 720, 580, 200, 40), canSave ? '#88ff88' : '#666');
+}
+
+// ─── DIFFICULTY ───
+function drawDifficulty() {
+  ctx.font = 'bold 36px monospace'; ctx.textAlign = 'center';
+  ctx.fillStyle = '#7df9ff'; ctx.shadowColor = '#7df9ff'; ctx.shadowBlur = 14;
+  ctx.fillText('AI DIFFICULTY', 480, 100); ctx.shadowBlur = 0;
+  ctx.font = '13px monospace'; ctx.fillStyle = '#888';
+  ctx.fillText('SELECT YOUR OPPONENT', 480, 130);
+  const opts = [
+    { id: 'easy',   x: 280, color: '#88ff88', label: 'EASY',   sub: '5 glyphs · slow · 60-75% acc' },
+    { id: 'normal', x: 480, color: '#ffdd44', label: 'NORMAL', sub: '18 glyphs · current · 65-90% acc' },
+    { id: 'hard',   x: 680, color: '#ff4488', label: 'HARD',   sub: 'all 30 · synergy aware · 80-98% acc' },
+  ];
+  for (const o of opts) {
+    const cx = o.x, cy = 280, w = 160, h = 100;
+    const hover = inRect({ x: pointerX, y: pointerY }, cx - 80, cy, 160, 100);
+    const selected = save.difficulty === o.id;
+    ctx.fillStyle = selected ? 'rgba(50,70,90,0.9)' : (hover ? 'rgba(30,40,60,0.9)' : 'rgba(20,20,30,0.7)');
+    ctx.fillRect(cx - 80, cy, 160, 100);
+    ctx.strokeStyle = o.color; ctx.lineWidth = selected ? 4 : (hover ? 3 : 1.5);
+    ctx.shadowColor = o.color; ctx.shadowBlur = selected ? 16 : (hover ? 10 : 4);
+    ctx.strokeRect(cx - 79.5, cy + 0.5, 159, 99);
+    ctx.shadowBlur = 0;
+    ctx.font = 'bold 22px monospace'; ctx.fillStyle = selected ? '#fff' : o.color; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(o.label, cx, cy + 30);
+    ctx.font = '10px monospace'; ctx.fillStyle = '#aaa'; ctx.textBaseline = 'alphabetic';
+    const lines = o.sub.split(' · ');
+    for (let i = 0; i < lines.length; i++) ctx.fillText(lines[i], cx, cy + 56 + i * 13);
+  }
+  drawButton(380, 480, 200, 40, 'BACK', inRect({ x: pointerX, y: pointerY }, 380, 480, 200, 40), '#888');
+}
+
+// ─── BATTLE ───
+function drawBattleScene() {
+  const sx = state.shakeFrames > 0 ? (Math.random() - 0.5) * state.shakeAmp : 0;
+  const sy = state.shakeFrames > 0 ? (Math.random() - 0.5) * state.shakeAmp : 0;
+  ctx.save(); ctx.translate(sx, sy);
+  drawMage(state.p1, '#7df9ff', false);
+  drawMage(state.ai, '#ff44dd', true);
+  drawStatusAuras(state.p1);
+  drawStatusAuras(state.ai);
+  drawTraps(state.p1);
+  drawTraps(state.ai);
+  for (const pr of state.projectiles) drawProjectile(pr);
+  for (const ef of state.effects) drawEffect(ef);
+  if (state.drawTrail && state.drawTrail.length >= 2) drawTrail(state.drawTrail, '#7df9ff');
+  drawBattleHUD();
+  if (state.scoreFeedback) drawScoreFeedback(state.scoreFeedback);
+  if (state.suddenDeath) drawSuddenDeathBanner();
+  if (state.flashAlpha > 0.01) { ctx.fillStyle = `rgba(255,255,255,${state.flashAlpha})`; ctx.fillRect(0, 0, 960, 640); }
+  ctx.restore();
+}
+function drawSuddenDeathBanner() {
+  const a = 0.7 + Math.sin(state.bgPulse * 8) * 0.3;
+  ctx.save();
+  ctx.font = 'bold 22px monospace'; ctx.textAlign = 'center';
+  ctx.fillStyle = '#ff4488'; ctx.shadowColor = '#ff4488'; ctx.shadowBlur = 16; ctx.globalAlpha = a;
+  ctx.fillText('SUDDEN DEATH · ' + Math.max(0, Math.ceil(state.suddenDeathTime)) + 's · NO MANA REGEN', 480, 96);
+  ctx.restore();
 }
 function drawMage(p, color, mirror) {
   const t = state.bgPulse * 2 + (mirror ? 1 : 0);
@@ -654,55 +985,49 @@ function drawMage(p, color, mirror) {
   ctx.beginPath(); ctx.arc(20, -30, 6 + Math.sin(t * 4) * 1.5, 0, Math.PI * 2); ctx.fill();
   ctx.globalAlpha = 1; ctx.shadowBlur = 0;
   ctx.restore();
-  // Status icons stack
   drawStatusBadges(p);
 }
 function drawStatusBadges(p) {
   const items = [];
-  if (p.barrier > 0) items.push({ label: 'BAR', color: '#88ff88', t: p.barrier });
-  if (p.parry > 0) items.push({ label: 'PRY', color: '#ffdd44', t: p.parry });
-  if (p.invuln > 0) items.push({ label: 'INV', color: '#ffdd00', t: p.invuln });
-  if (p.reflectNext > 0) items.push({ label: 'RFL', color: '#aaffaa', t: 1 });
-  if (p.mirrorNext > 0) items.push({ label: 'MIR', color: '#dddddd', t: 1 });
-  if (p.doubleNext > 0) items.push({ label: 'PWR', color: '#ff8844', t: 1 });
-  if (p.halveNext > 0) items.push({ label: 'RES', color: '#ffeeaa', t: 1 });
-  if (p.burn > 0) items.push({ label: 'BRN', color: '#ff4422', t: p.burn });
-  if (p.stun > 0) items.push({ label: 'STN', color: '#88ddff', t: p.stun });
-  if (p.slowMana > 0) items.push({ label: 'SLW', color: '#88aaff', t: p.slowMana });
-  if (p.fastMana > 0) items.push({ label: 'FST', color: '#88ffaa', t: p.fastMana });
-  if (p.manaLock > 0) items.push({ label: 'LCK', color: '#ddff44', t: p.manaLock });
-  if (p.vengeance > 0) items.push({ label: 'VEN', color: '#ff0044', t: 1 });
-  if (p.traps > 0) items.push({ label: 'TR' + p.traps, color: '#ffaa00', t: 99 });
+  if (p.barrier > 0) items.push({ l: 'BAR', c: '#88ff88' });
+  if (p.parry > 0) items.push({ l: 'PRY', c: '#ffdd44' });
+  if (p.invuln > 0) items.push({ l: 'INV', c: '#ffdd00' });
+  if (p.reflectNext > 0) items.push({ l: 'RFL', c: '#aaffaa' });
+  if (p.mirrorNext > 0) items.push({ l: 'MIR', c: '#dddddd' });
+  if (p.doubleNext > 0) items.push({ l: 'PWR', c: '#ff8844' });
+  if (p.halveNext > 0) items.push({ l: 'RES', c: '#ffeeaa' });
+  if (p.burn > 0) items.push({ l: 'BRN', c: '#ff4422' });
+  if (p.stun > 0) items.push({ l: 'STN', c: '#88ddff' });
+  if (p.slowMana > 0) items.push({ l: 'SLW', c: '#88aaff' });
+  if (p.fastMana > 0) items.push({ l: 'FST', c: '#88ffaa' });
+  if (p.manaLock > 0) items.push({ l: 'LCK', c: '#ddff44' });
+  if (p.vengeance > 0) items.push({ l: 'VEN', c: '#ff0044' });
+  if (p.traps > 0) items.push({ l: 'TR' + p.traps, c: '#ffaa00' });
   let bx = p.x - (items.length * 26) / 2;
   for (const it of items) {
     ctx.save();
-    ctx.fillStyle = 'rgba(0,0,0,0.7)';
-    ctx.fillRect(bx, p.y - 110, 24, 14);
-    ctx.strokeStyle = it.color; ctx.lineWidth = 1;
-    ctx.strokeRect(bx + 0.5, p.y - 109.5, 23, 13);
-    ctx.fillStyle = it.color; ctx.font = 'bold 8px monospace'; ctx.textAlign = 'center';
-    ctx.fillText(it.label, bx + 12, p.y - 100);
+    ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(bx, p.y - 110, 24, 14);
+    ctx.strokeStyle = it.c; ctx.lineWidth = 1; ctx.strokeRect(bx + 0.5, p.y - 109.5, 23, 13);
+    ctx.fillStyle = it.c; ctx.font = 'bold 8px monospace'; ctx.textAlign = 'center';
+    ctx.fillText(it.l, bx + 12, p.y - 100);
     ctx.restore();
     bx += 26;
   }
 }
-function drawStatusAuras(p, color) {
+function drawStatusAuras(p) {
   if (p.barrier > 0) {
-    ctx.strokeStyle = '#88ff88'; ctx.lineWidth = 2;
-    ctx.shadowColor = '#88ff88'; ctx.shadowBlur = 14;
+    ctx.strokeStyle = '#88ff88'; ctx.lineWidth = 2; ctx.shadowColor = '#88ff88'; ctx.shadowBlur = 14;
     ctx.globalAlpha = 0.3 + 0.2 * Math.sin(state.bgPulse * 8);
     ctx.beginPath(); ctx.arc(p.x, p.y - 40, 50, 0, Math.PI * 2); ctx.stroke();
     ctx.globalAlpha = 1; ctx.shadowBlur = 0;
   }
   if (p.parry > 0) {
-    ctx.strokeStyle = '#ffdd44'; ctx.lineWidth = 3;
-    ctx.shadowColor = '#ffdd44'; ctx.shadowBlur = 20; ctx.globalAlpha = 0.6;
+    ctx.strokeStyle = '#ffdd44'; ctx.lineWidth = 3; ctx.shadowColor = '#ffdd44'; ctx.shadowBlur = 20; ctx.globalAlpha = 0.6;
     ctx.beginPath(); ctx.arc(p.x, p.y - 40, 38 + Math.sin(state.bgPulse * 12) * 3, 0, Math.PI * 2); ctx.stroke();
     ctx.globalAlpha = 1; ctx.shadowBlur = 0;
   }
   if (p.invuln > 0) {
-    ctx.strokeStyle = '#ffff00'; ctx.lineWidth = 4;
-    ctx.shadowColor = '#ffff00'; ctx.shadowBlur = 30; ctx.globalAlpha = 0.5;
+    ctx.strokeStyle = '#ffff00'; ctx.lineWidth = 4; ctx.shadowColor = '#ffff00'; ctx.shadowBlur = 30; ctx.globalAlpha = 0.5;
     ctx.beginPath(); ctx.arc(p.x, p.y - 40, 60, 0, Math.PI * 2); ctx.stroke();
     ctx.globalAlpha = 1; ctx.shadowBlur = 0;
   }
@@ -804,8 +1129,7 @@ function drawEffect(ef) {
     }
     ctx.stroke();
   } else if (ef.type === 'megaBoom') {
-    const a = ef.life / 36;
-    const r = (1 - a) * 120;
+    const a = ef.life / 36, r = (1 - a) * 120;
     ctx.strokeStyle = ef.color; ctx.lineWidth = 4;
     ctx.shadowColor = ef.color; ctx.shadowBlur = 30; ctx.globalAlpha = a;
     ctx.beginPath(); ctx.arc(ef.x, ef.y, r, 0, Math.PI * 2); ctx.stroke();
@@ -841,6 +1165,11 @@ function drawEffect(ef) {
     ctx.beginPath(); ctx.arc(ef.who.x, ef.who.y - 40, 60 * (1 - a) + 30, 0, Math.PI * 2); ctx.stroke();
     ctx.font = 'bold 18px monospace'; ctx.fillStyle = col; ctx.textAlign = 'center';
     ctx.fillText(lbl + '!', ef.who.x, ef.who.y - 100);
+  } else if (ef.type === 'comboFlash') {
+    const a = ef.life / 40;
+    ctx.fillStyle = '#ffdd44'; ctx.font = 'bold 13px monospace'; ctx.textAlign = 'center';
+    ctx.shadowColor = '#ffdd44'; ctx.shadowBlur = 12; ctx.globalAlpha = a;
+    ctx.fillText('COMBO · ' + (ef.hint || ''), ef.who.x, ef.who.y - 130);
   } else if (ef.type === 'barrierHit') {
     const a = ef.life / 18;
     ctx.strokeStyle = '#88ff88'; ctx.lineWidth = 3;
@@ -889,11 +1218,6 @@ function drawEffect(ef) {
     ctx.fillStyle = '#ff4422'; ctx.font = 'bold 14px monospace'; ctx.textAlign = 'center';
     ctx.globalAlpha = a; ctx.shadowColor = '#ff4422'; ctx.shadowBlur = 8;
     ctx.fillText('BURN', ef.who.x, ef.who.y - 110 - (1 - a) * 20);
-  } else if (ef.type === 'unfire') {
-    const a = ef.life / 16;
-    ctx.fillStyle = '#a44'; ctx.font = '12px monospace'; ctx.textAlign = 'center';
-    ctx.globalAlpha = a;
-    ctx.fillText('NO TRAP', ef.who.x, ef.who.y - 100);
   }
   ctx.restore();
 }
@@ -910,19 +1234,50 @@ function drawTrail(pts, color) {
   ctx.stroke();
   ctx.restore();
 }
-function drawHUD() {
+function drawBattleHUD() {
   drawBar(20, 20, 360, 18, state.p1.hp / state.p1.hpMax, '#ff4488', '1P · HP', state.p1.hp);
   drawBar(20, 44, 360, 10, state.p1.mana / state.p1.manaMax, '#7df9ff', 'MANA', state.p1.mana);
-  drawBar(580, 20, 360, 18, state.ai.hp / state.ai.hpMax, '#ff4488', 'AI · HP', state.ai.hp, true);
+  drawBar(580, 20, 360, 18, state.ai.hp / state.ai.hpMax, '#ff4488', save.difficulty.toUpperCase() + ' AI · HP', state.ai.hp, true);
   drawBar(580, 44, 360, 10, state.ai.mana / state.ai.manaMax, '#ff44dd', 'MANA', state.ai.mana, true);
-  const sec = Math.max(0, Math.ceil(state.matchTime));
+  const sec = Math.max(0, Math.ceil(state.suddenDeath ? state.suddenDeathTime : state.matchTime));
   ctx.font = 'bold 36px monospace'; ctx.textAlign = 'center';
-  ctx.fillStyle = sec <= 10 ? '#ff4488' : '#7df9ff';
+  ctx.fillStyle = state.suddenDeath ? '#ff4488' : (sec <= 10 ? '#ff4488' : '#7df9ff');
   ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = 14;
   ctx.fillText(String(sec).padStart(2, '0'), 480, 50);
   ctx.shadowBlur = 0;
   ctx.font = '10px monospace'; ctx.fillStyle = '#566';
-  ctx.fillText('TIME · TAB FOR GLYPHS', 480, 64);
+  ctx.fillText(state.suddenDeath ? 'SUDDEN DEATH' : 'TIME', 480, 64);
+  // Deck strip (bottom)
+  drawDeckStrip();
+}
+function drawDeckStrip() {
+  const ids = save.deck;
+  const w = 90, gap = 8, total = ids.length * w + (ids.length - 1) * gap;
+  let x = (960 - total) / 2;
+  const y = 580;
+  ctx.font = '9px monospace';
+  for (const id of ids) {
+    const g = G[id];
+    if (!g) { x += w + gap; continue; }
+    const have = state.p1.mana >= g.mana && state.p1.manaLock === 0;
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(x, y, w, 50);
+    ctx.strokeStyle = have ? g.color : '#333'; ctx.lineWidth = 1;
+    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, 49);
+    ctx.translate(x + 16, y + 24);
+    ctx.strokeStyle = have ? g.color : '#444'; ctx.lineWidth = 1.5;
+    ctx.shadowColor = have ? g.color : 'transparent'; ctx.shadowBlur = have ? 5 : 0;
+    drawGlyphIcon(g.shape, 10);
+    ctx.restore();
+    ctx.fillStyle = have ? '#fff' : '#666'; ctx.font = 'bold 9px monospace'; ctx.textAlign = 'left';
+    ctx.fillText(g.ja, x + 32, y + 16);
+    ctx.fillStyle = have ? g.color : '#555';
+    ctx.fillText('M' + g.mana + (g.dmg ? ' · D' + g.dmg : ''), x + 32, y + 30);
+    if (g.syn === 'requiredCombo') { ctx.fillStyle = '#ffdd44'; ctx.fillText('COMBO', x + 32, y + 42); }
+    else if (g.syn === 'soft') { ctx.fillStyle = '#aaa'; ctx.fillText('SOFT', x + 32, y + 42); }
+    x += w + gap;
+  }
 }
 function drawBar(x, y, w, h, ratio, color, label, val, mirror) {
   ctx.save();
@@ -950,43 +1305,8 @@ function drawScoreFeedback(sf) {
   ctx.font = 'bold 13px monospace'; ctx.fillStyle = '#fff';
   ctx.fillText(sf.tier.toUpperCase() + (sf.fired ? '' : ' · ' + (sf.reason || '')), baseX, baseY + 18);
   if (def) { ctx.fillStyle = def.color; ctx.fillText(def.ja, baseX, baseY + 36); }
+  if (sf.comboHint) { ctx.fillStyle = '#ffdd44'; ctx.font = 'bold 10px monospace'; ctx.fillText(sf.comboHint, baseX, baseY + 50); }
   ctx.shadowBlur = 0; ctx.restore();
-}
-function drawGlyphBook() {
-  ctx.fillStyle = 'rgba(0,0,0,0.92)'; ctx.fillRect(0, 0, 960, 640);
-  ctx.font = 'bold 22px monospace'; ctx.textAlign = 'center';
-  ctx.fillStyle = '#7df9ff'; ctx.shadowColor = '#7df9ff'; ctx.shadowBlur = 14;
-  ctx.fillText('GLYPH BOOK · 30 GLYPHS', 480, 36);
-  ctx.shadowBlur = 0;
-  ctx.font = '10px monospace'; ctx.fillStyle = '#666';
-  ctx.fillText('TAB or ESC to close', 480, 54);
-  // Grid: 6 cols × 5 rows
-  const cols = 6, rows = 5, cellW = 145, cellH = 100, startX = (960 - cols * cellW) / 2, startY = 80;
-  for (let i = 0; i < G_ORDER.length; i++) {
-    const id = G_ORDER[i], g = G[id];
-    const cx = startX + (i % cols) * cellW, cy = startY + Math.floor(i / cols) * cellH;
-    ctx.fillStyle = 'rgba(20,20,30,0.8)'; ctx.fillRect(cx + 2, cy + 2, cellW - 4, cellH - 4);
-    ctx.strokeStyle = g.color; ctx.lineWidth = 1; ctx.strokeRect(cx + 2.5, cy + 2.5, cellW - 5, cellH - 5);
-    // Mini icon
-    ctx.save(); ctx.translate(cx + 22, cy + 26);
-    ctx.strokeStyle = g.color; ctx.lineWidth = 1.6;
-    ctx.shadowColor = g.color; ctx.shadowBlur = 6;
-    drawGlyphIcon(g.shape, 14);
-    ctx.restore();
-    // Text
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#fff'; ctx.font = 'bold 12px monospace';
-    ctx.fillText(g.ja, cx + 44, cy + 22);
-    ctx.fillStyle = '#888'; ctx.font = '8px monospace';
-    ctx.fillText(g.en.toUpperCase(), cx + 44, cy + 32);
-    ctx.fillStyle = CAT_COLOR[g.cat]; ctx.font = '8px monospace';
-    ctx.fillText(CAT_LABEL_JA[g.cat] + ' · ' + g.syn.toUpperCase(), cx + 8, cy + 56);
-    ctx.fillStyle = '#ccc'; ctx.font = '9px monospace';
-    const desc = g.desc.length > 26 ? g.desc.slice(0, 26) + '…' : g.desc;
-    ctx.fillText(desc, cx + 8, cy + 70);
-    ctx.fillStyle = g.color; ctx.font = 'bold 9px monospace';
-    ctx.fillText('MANA ' + g.mana + (g.dmg ? '  DMG ' + g.dmg : ''), cx + 8, cy + 86);
-  }
 }
 function drawGlyphIcon(shape, s) {
   ctx.beginPath();
@@ -1024,18 +1344,55 @@ function drawGlyphIcon(shape, s) {
     default:            ctx.arc(0, 0, s * 0.5, 0, Math.PI * 2); ctx.stroke();
   }
 }
-function drawGameOver() {
-  ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(0, 0, 960, 640);
+
+// ─── RESULT ───
+function drawResult() {
+  // Reuse battle scene rendering as backdrop, dimmed
+  ctx.save(); ctx.globalAlpha = 0.4;
+  drawMage(state.p1, '#7df9ff', false);
+  drawMage(state.ai, '#ff44dd', true);
+  ctx.restore();
+  ctx.fillStyle = 'rgba(0,0,0,0.75)'; ctx.fillRect(0, 0, 960, 640);
   const won = state.winner === 'p1';
-  ctx.font = 'bold 80px monospace'; ctx.textAlign = 'center';
-  ctx.fillStyle = won ? '#7df9ff' : '#ff44dd';
+  const draw = state.winner === 'draw';
+  ctx.font = 'bold 64px monospace'; ctx.textAlign = 'center';
+  ctx.fillStyle = draw ? '#aaa' : (won ? '#7df9ff' : '#ff44dd');
   ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = 30;
-  ctx.fillText(won ? 'VICTORY' : 'DEFEAT', 480, 280);
+  ctx.fillText(draw ? 'DRAW' : (won ? 'VICTORY' : 'DEFEAT'), 480, 130);
   ctx.shadowBlur = 0;
-  ctx.font = 'bold 22px monospace'; ctx.fillStyle = '#fff';
-  ctx.fillText(`${Math.round(state.p1.hp)} HP   vs   ${Math.round(state.ai.hp)} HP`, 480, 330);
-  ctx.font = '14px monospace'; ctx.fillStyle = '#aaa';
-  ctx.fillText('SPACE / ENTER TO RESTART', 480, 400);
+  ctx.font = 'bold 18px monospace'; ctx.fillStyle = '#fff';
+  ctx.fillText(`${Math.round(state.p1.hp)} HP   vs   ${Math.round(state.ai.hp)} HP`, 480, 170);
+  // Stats panel
+  const ms = state.matchStats;
+  const sx = 200, sy = 220, sw = 560, sh = 240;
+  ctx.fillStyle = 'rgba(20,20,30,0.85)'; ctx.fillRect(sx, sy, sw, sh);
+  ctx.strokeStyle = '#7df9ff'; ctx.lineWidth = 1; ctx.strokeRect(sx + 0.5, sy + 0.5, sw - 1, sh - 1);
+  ctx.font = 'bold 13px monospace'; ctx.textAlign = 'center'; ctx.fillStyle = '#7df9ff';
+  ctx.fillText('MATCH STATS', sx + sw / 2, sy + 22);
+  const rows = [
+    ['CASTS',          ms.casts],
+    ['HITS',           ms.hits],
+    ['DAMAGE DEALT',   Math.round(ms.dmgDealt)],
+    ['DAMAGE TAKEN',   Math.round(ms.dmgTaken)],
+    ['MAX SCORE',      Math.round(ms.maxScore * 100) + '%'],
+    ['COMBOS',         ms.combosTriggered],
+    ['DIFFICULTY',     save.difficulty.toUpperCase()],
+  ];
+  ctx.font = '13px monospace'; ctx.textAlign = 'left';
+  let ry = sy + 50;
+  for (const [k, v] of rows) {
+    ctx.fillStyle = '#888'; ctx.fillText(k, sx + 30, ry);
+    ctx.fillStyle = '#fff'; ctx.textAlign = 'right'; ctx.fillText(v, sx + sw - 30, ry);
+    ctx.textAlign = 'left';
+    ry += 24;
+  }
+  // Lifetime
+  const ls = save.lifetime;
+  ctx.font = '11px monospace'; ctx.textAlign = 'center'; ctx.fillStyle = '#888';
+  ctx.fillText(`LIFETIME · ${ls.wins}W · ${ls.losses}L · ${ls.draws}D · BEST ${Math.round(ls.bestScore * 100)}%`, 480, 490);
+  // Buttons
+  drawButton(280, 520, 180, 50, 'REMATCH', inRect({ x: pointerX, y: pointerY }, 280, 520, 180, 50), '#88ff88');
+  drawButton(500, 520, 180, 50, 'MENU', inRect({ x: pointerX, y: pointerY }, 500, 520, 180, 50), '#7df9ff');
 }
 
 // ═══════════════════════════════════════════════════════════
