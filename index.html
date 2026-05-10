@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>GLYPH DUEL — Phase 1A</title>
+<title>GLYPH DUEL — Phase 1A + 1C</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
   html, body { background: #000; height: 100vh; overflow: hidden; touch-action: none; font-family: 'SF Mono', Menlo, monospace; }
@@ -69,8 +69,8 @@ function distAtBest(p, T, a, b, th) {
   return Math.min(f1, f2);
 }
 function preprocess(raw) { let p = resample(raw, N_RESAMPLE); p = rotateBy(p, -indicativeAngle(p)); p = scaleTo(p, SQ_SIZE); p = translateTo(p, { x: 0, y: 0 }); return p; }
-const TEMPLATES_ALL = [];      // every glyph template (30)
-let TEMPLATES_ACTIVE = [];     // currently-equipped subset (deck of 8)
+const TEMPLATES_ALL = [];
+let TEMPLATES_ACTIVE = [];
 function reg(name, raw) { TEMPLATES_ALL.push({ name, points: preprocess(raw) }); }
 function setActiveTemplates(deckIds) { TEMPLATES_ACTIVE = TEMPLATES_ALL.filter(t => deckIds.includes(t.name)); }
 function recognize(raw) {
@@ -116,63 +116,123 @@ reg('reverse',      [{x:0,y:0},{x:50,y:100},{x:100,y:0},{x:150,y:100},{x:0,y:0}]
 reg('vengeance',    [{x:100,y:0},{x:50,y:80},{x:80,y:160},{x:100,y:200},{x:120,y:160},{x:150,y:80},{x:100,y:0}]);
 
 // ═══════════════════════════════════════════════════════════
-// GLYPH DEFINITIONS
+// GLYPH DEFINITIONS (with Phase 1C rarity tags)
 // ═══════════════════════════════════════════════════════════
 const G = {
-  bolt:         { ja:'雷撃',   en:'Bolt',          cat:'attack',  syn:'indep',     mana:25, dmg:15, color:'#7df9ff', shape:'zigzag',     desc:'instant beam' },
-  fireball:     { ja:'火球',   en:'Fireball',      cat:'attack',  syn:'indep',     mana:35, dmg:22, color:'#ff8844', shape:'circle',     desc:'arcing projectile' },
-  icicle:       { ja:'氷柱',   en:'Icicle',        cat:'attack',  syn:'indep',     mana:20, dmg:12, color:'#aaeeff', shape:'v',          desc:'piercing shard' },
-  windblade:    { ja:'風刃',   en:'Wind Blade',    cat:'attack',  syn:'indep',     mana:30, dmg:18, color:'#88ffcc', shape:'crescent',   desc:'fast slicing arc' },
-  beam:         { ja:'光線',   en:'Light Beam',    cat:'attack',  syn:'indep',     mana:50, dmg:30, color:'#ffff88', shape:'twoLines',   desc:'homing photon beam' },
-  gravorb:      { ja:'重力球', en:'Grav Orb',      cat:'attack',  syn:'soft',      mana:40, dmg:8,  color:'#aa66ff', shape:'spiral',     desc:'pull + sets next attack +30%' },
-  lightnet:     { ja:'雷網',   en:'Lightning Net', cat:'attack',  syn:'indep',     mana:35, dmg:14, color:'#88ddff', shape:'grid',       desc:'area dmg + 1.5s stun' },
-  flame:        { ja:'火炎放射',en:'Flamethrower', cat:'attack',  syn:'indep',     mana:60, dmg:5,  color:'#ff4422', shape:'longWave',   desc:'3s burn DOT' },
-  shadowstrike: { ja:'影刺',   en:'Shadow Strike', cat:'attack',  syn:'soft',      mana:45, dmg:25, color:'#9944dd', shape:'x',          desc:'teleport-strike' },
-  doubleburst:  { ja:'双爆',   en:'Double Burst',  cat:'attack',  syn:'requiredCombo', mana:80, dmg:40, color:'#ff44dd', shape:'doubleTri', desc:'40 dmg · NEEDS fire prep' },
-  barrier:      { ja:'結界',   en:'Barrier',       cat:'defense', syn:'indep',     mana:30, color:'#88ff88', shape:'triangle',  desc:'3s damage block' },
-  reflect:      { ja:'反射',   en:'Reflect',       cat:'defense', syn:'indep',     mana:50, color:'#aaffaa', shape:'invTriangle',desc:'reflect next hit' },
-  heal:         { ja:'治癒',   en:'Heal',          cat:'defense', syn:'indep',     mana:40, color:'#ff44dd', shape:'check',      desc:'+30 HP' },
-  cleanse:      { ja:'浄化',   en:'Cleanse',       cat:'defense', syn:'indep',     mana:25, color:'#ddffdd', shape:'wave',       desc:'remove all debuffs' },
-  mirror:       { ja:'鏡',     en:'Mirror',        cat:'defense', syn:'soft',      mana:60, color:'#dddddd', shape:'figure8',    desc:'next glyph fires twice' },
-  immortal:     { ja:'不滅',   en:'Immortal',      cat:'defense', syn:'requiredCombo', mana:70, color:'#ffdd00', shape:'star',  desc:'3s invuln · NEEDS def prep' },
-  manadrain:    { ja:'マナ吸収',en:'Mana Drain',   cat:'defense', syn:'indep',     mana:35, color:'#aa88ff', shape:'arrow',      desc:'enemy mana -20' },
-  selfbuff:     { ja:'自己強化',en:'Self Empower', cat:'defense', syn:'soft',      mana:45, color:'#ff8844', shape:'upTriangle', desc:'next glyph dmg ×2' },
-  teleport:     { ja:'瞬間移動',en:'Teleport',     cat:'movement', syn:'indep',     mana:30, color:'#cc88ff', shape:'dot',       desc:'evade next 1 hit' },
-  windrun:      { ja:'風走',   en:'Wind Run',      cat:'movement', syn:'indep',     mana:20, color:'#88ffaa', shape:'shortWave', desc:'+50% mana regen 3s' },
-  timeslow:     { ja:'時遅',   en:'Time Slow',     cat:'movement', syn:'indep',     mana:50, color:'#88aaff', shape:'clock',     desc:'enemy mana regen halved 3s' },
-  shadowwalk:   { ja:'影渡',   en:'Shadow Walk',   cat:'movement', syn:'soft',      mana:40, color:'#440088', shape:'narrowZ',   desc:'evade + next attack +50%' },
-  trapset:      { ja:'罠設置', en:'Trap Set',      cat:'trap',    syn:'requiredCombo', mana:30, color:'#ffaa00', shape:'xMark',  desc:'place trap (max 2)' },
-  trigger:      { ja:'発動',   en:'Trigger',       cat:'trap',    syn:'requiredCombo', mana:10, color:'#ffaa00', shape:'shortLine', desc:'detonate traps · 25 ea' },
-  manazone:     { ja:'結界陣', en:'Mana Sigil',    cat:'trap',    syn:'requiredCombo', mana:50, color:'#ffaa44', shape:'pentagon', desc:'+10/sec mana 5s' },
-  resonance:    { ja:'共鳴',   en:'Resonance',     cat:'trap',    syn:'requiredCombo', mana:30, color:'#ffeeaa', shape:'spiralOut', desc:'next glyph mana halved' },
-  parry:        { ja:'パリィ', en:'Parry',         cat:'counter', syn:'indep',     mana:20, color:'#ffdd44', shape:'rect',       desc:'block next 1 hit' },
-  counterspell: { ja:'召し上げ',en:'Counterspell', cat:'counter', syn:'soft',      mana:40, color:'#ddff44', shape:'whirl',      desc:'1s enemy mana lock' },
-  reverse:      { ja:'反転',   en:'Reverse',       cat:'counter', syn:'requiredCombo', mana:60, color:'#ff44aa', shape:'omega',  desc:'steal buffs · NEEDS enemy buff' },
-  vengeance:    { ja:'復讐',   en:'Vengeance',     cat:'counter', syn:'requiredCombo', mana:70, color:'#ff0044', shape:'teardrop', desc:'next hit triggers 2× counter · NEEDS HP<50%' },
+  bolt:         { ja:'雷撃',   en:'Bolt',          cat:'attack',  syn:'indep',     mana:25, dmg:15, color:'#7df9ff', shape:'zigzag',     desc:'instant beam',           rarity:'C', starter:true },
+  fireball:     { ja:'火球',   en:'Fireball',      cat:'attack',  syn:'indep',     mana:35, dmg:22, color:'#ff8844', shape:'circle',     desc:'arcing projectile',      rarity:'C' },
+  icicle:       { ja:'氷柱',   en:'Icicle',        cat:'attack',  syn:'indep',     mana:20, dmg:12, color:'#aaeeff', shape:'v',          desc:'piercing shard',          rarity:'C' },
+  windblade:    { ja:'風刃',   en:'Wind Blade',    cat:'attack',  syn:'indep',     mana:30, dmg:18, color:'#88ffcc', shape:'crescent',   desc:'fast slicing arc',        rarity:'C' },
+  beam:         { ja:'光線',   en:'Light Beam',    cat:'attack',  syn:'indep',     mana:50, dmg:30, color:'#ffff88', shape:'twoLines',   desc:'homing photon beam',      rarity:'R' },
+  gravorb:      { ja:'重力球', en:'Grav Orb',      cat:'attack',  syn:'soft',      mana:40, dmg:8,  color:'#aa66ff', shape:'spiral',     desc:'pull + next attack +30%', rarity:'R' },
+  lightnet:     { ja:'雷網',   en:'Lightning Net', cat:'attack',  syn:'indep',     mana:35, dmg:14, color:'#88ddff', shape:'grid',       desc:'area dmg + 1.5s stun',    rarity:'C' },
+  flame:        { ja:'火炎放射',en:'Flamethrower', cat:'attack',  syn:'indep',     mana:60, dmg:5,  color:'#ff4422', shape:'longWave',   desc:'3s burn DOT',             rarity:'R' },
+  shadowstrike: { ja:'影刺',   en:'Shadow Strike', cat:'attack',  syn:'soft',      mana:45, dmg:25, color:'#9944dd', shape:'x',          desc:'teleport-strike',         rarity:'R' },
+  doubleburst:  { ja:'双爆',   en:'Double Burst',  cat:'attack',  syn:'requiredCombo', mana:80, dmg:40, color:'#ff44dd', shape:'doubleTri', desc:'40 dmg · NEEDS fire prep', rarity:'L' },
+  barrier:      { ja:'結界',   en:'Barrier',       cat:'defense', syn:'indep',     mana:30, color:'#88ff88', shape:'triangle',  desc:'3s damage block',        rarity:'C', starter:true },
+  reflect:      { ja:'反射',   en:'Reflect',       cat:'defense', syn:'indep',     mana:50, color:'#aaffaa', shape:'invTriangle',desc:'reflect next hit',     rarity:'C' },
+  heal:         { ja:'治癒',   en:'Heal',          cat:'defense', syn:'indep',     mana:40, color:'#ff44dd', shape:'check',      desc:'+30 HP',                rarity:'C', starter:true },
+  cleanse:      { ja:'浄化',   en:'Cleanse',       cat:'defense', syn:'indep',     mana:25, color:'#ddffdd', shape:'wave',       desc:'remove all debuffs',    rarity:'C' },
+  mirror:       { ja:'鏡',     en:'Mirror',        cat:'defense', syn:'soft',      mana:60, color:'#dddddd', shape:'figure8',    desc:'next glyph fires twice',rarity:'R' },
+  immortal:     { ja:'不滅',   en:'Immortal',      cat:'defense', syn:'requiredCombo', mana:70, color:'#ffdd00', shape:'star',  desc:'3s invuln · NEEDS def prep', rarity:'L' },
+  manadrain:    { ja:'マナ吸収',en:'Mana Drain',   cat:'defense', syn:'indep',     mana:35, color:'#aa88ff', shape:'arrow',      desc:'enemy mana -20',        rarity:'C' },
+  selfbuff:     { ja:'自己強化',en:'Self Empower', cat:'defense', syn:'soft',      mana:45, color:'#ff8844', shape:'upTriangle', desc:'next glyph dmg ×2',     rarity:'C' },
+  teleport:     { ja:'瞬間移動',en:'Teleport',     cat:'movement', syn:'indep',     mana:30, color:'#cc88ff', shape:'dot',       desc:'evade next 1 hit',      rarity:'C', starter:true },
+  windrun:      { ja:'風走',   en:'Wind Run',      cat:'movement', syn:'indep',     mana:20, color:'#88ffaa', shape:'shortWave', desc:'+50% mana regen 3s',     rarity:'C' },
+  timeslow:     { ja:'時遅',   en:'Time Slow',     cat:'movement', syn:'indep',     mana:50, color:'#88aaff', shape:'clock',     desc:'enemy mana regen halved',rarity:'R' },
+  shadowwalk:   { ja:'影渡',   en:'Shadow Walk',   cat:'movement', syn:'soft',      mana:40, color:'#440088', shape:'narrowZ',   desc:'evade + next attack +50%',rarity:'C' },
+  trapset:      { ja:'罠設置', en:'Trap Set',      cat:'trap',    syn:'requiredCombo', mana:30, color:'#ffaa00', shape:'xMark',  desc:'place trap (max 2)',     rarity:'C' },
+  trigger:      { ja:'発動',   en:'Trigger',       cat:'trap',    syn:'requiredCombo', mana:10, color:'#ffaa00', shape:'shortLine', desc:'detonate traps · 25 ea',rarity:'C' },
+  manazone:     { ja:'結界陣', en:'Mana Sigil',    cat:'trap',    syn:'requiredCombo', mana:50, color:'#ffaa44', shape:'pentagon', desc:'+10/sec mana 5s',       rarity:'R' },
+  resonance:    { ja:'共鳴',   en:'Resonance',     cat:'trap',    syn:'requiredCombo', mana:30, color:'#ffeeaa', shape:'spiralOut', desc:'next glyph mana halved',rarity:'R' },
+  parry:        { ja:'パリィ', en:'Parry',         cat:'counter', syn:'indep',     mana:20, color:'#ffdd44', shape:'rect',       desc:'block next 1 hit',       rarity:'C', starter:true },
+  counterspell: { ja:'召し上げ',en:'Counterspell', cat:'counter', syn:'soft',      mana:40, color:'#ddff44', shape:'whirl',      desc:'1s enemy mana lock',     rarity:'C' },
+  reverse:      { ja:'反転',   en:'Reverse',       cat:'counter', syn:'requiredCombo', mana:60, color:'#ff44aa', shape:'omega',  desc:'steal buffs',            rarity:'R' },
+  vengeance:    { ja:'復讐',   en:'Vengeance',     cat:'counter', syn:'requiredCombo', mana:70, color:'#ff0044', shape:'teardrop', desc:'2× counter · NEEDS HP<50%', rarity:'L' },
 };
 const G_ORDER = Object.keys(G);
 const CAT_COLOR = { attack: '#ff8866', defense: '#88ff88', movement: '#88ccff', trap: '#ffaa44', counter: '#ffdd44' };
 const CAT_LABEL_JA = { attack: '攻撃', defense: '防御', movement: '移動', trap: '設置', counter: '反応' };
 
 // ═══════════════════════════════════════════════════════════
+// PHASE 1C — GACHA POOLS, ECONOMY, PROBABILITIES
+// ═══════════════════════════════════════════════════════════
+const SKIN_POOL = [
+  { id: 'skin_neon_basic',   name: 'ネオン・ベーシック', rarity: 'C', accent: '#7df9ff', sub: '#16162a', flair: 'standard hood' },
+  { id: 'skin_cyber_blue',   name: 'サイバー・ブルー',   rarity: 'C', accent: '#3da9fc', sub: '#0a1830', flair: 'circuit lines' },
+  { id: 'skin_glitch_red',   name: 'グリッチ・レッド',   rarity: 'C', accent: '#ff3a55', sub: '#1a0a0a', flair: 'noise bands' },
+  { id: 'skin_data_green',   name: 'データ・グリーン',   rarity: 'C', accent: '#33ff77', sub: '#0a1a0a', flair: 'matrix rain' },
+  { id: 'skin_wire_white',   name: 'ワイヤー・ホワイト', rarity: 'C', accent: '#eeeeee', sub: '#202028', flair: 'wireframe' },
+  { id: 'skin_mage_violet',  name: '魔導士・バイオレット', rarity: 'R', accent: '#aa66ff', sub: '#1a0a30', flair: 'arcane sigils' },
+  { id: 'skin_hacker_black', name: 'ハッカー・ブラック', rarity: 'R', accent: '#222222', sub: '#080808', flair: 'shadowed hood' },
+  { id: 'skin_priest_gold',  name: 'プリースト・ゴールド', rarity: 'R', accent: '#f5b700', sub: '#2a1808', flair: 'gilded trim' },
+  { id: 'skin_arch_celestial', name: 'アークセレスチアル', rarity: 'L', accent: '#fff7c2', sub: '#332244', flair: 'wing aura' },
+  { id: 'skin_void_shadow',  name: 'ヴォイド・シャドウ',  rarity: 'L', accent: '#ff44dd', sub: '#000000', flair: 'void rift' },
+];
+// Glyph gacha pool: all glyphs except the 5 starters (per spec).
+const STARTER_GLYPHS = G_ORDER.filter(id => G[id].starter);   // bolt, barrier, heal, teleport, parry
+const GLYPH_GACHA_POOL = G_ORDER.filter(id => !G[id].starter).map(id => ({ id, name: G[id].ja, rarity: G[id].rarity, category: G[id].cat }));
+
+const RARITY_RATES = { C: 0.85, R: 0.12, L: 0.03 };
+const REFUND_BY_RARITY = { C: 10, R: 50, L: 200 };
+const PULL_COST_SINGLE = 100;
+const PULL_COST_TEN = 900;
+const PITY_THRESHOLD = 90;
+const COIN_PER_WIN = 50;
+const STARTER_COINS = 1000;
+const STARTER_SKIN = 'skin_neon_basic';
+const RARITY_COLOR = { C: '#a8c4d8', R: '#aa66ff', L: '#f5b700' };
+
+// ═══════════════════════════════════════════════════════════
 // LOCAL STORAGE
 // ═══════════════════════════════════════════════════════════
-const SAVE_KEY = 'glyphduel:save:v1';
-const DEFAULT_DECK = ['bolt', 'fireball', 'icicle', 'barrier', 'heal', 'parry', 'manadrain', 'lightnet'];
+const SAVE_KEY = 'glyphduel:save:v2';
 const DEFAULT_SAVE = {
-  deck: DEFAULT_DECK.slice(),
+  deck: STARTER_GLYPHS.slice(),
   difficulty: 'normal',
   lifetime: { wins: 0, losses: 0, draws: 0, matches: 0, totalDmg: 0, totalCasts: 0, bestScore: 0 },
+  currency: { coins: STARTER_COINS },
+  inventory: { skins: [STARTER_SKIN], glyphs: STARTER_GLYPHS.slice() },
+  equippedSkin: STARTER_SKIN,
+  pity: { skin: 0, glyph: 0 },
+  gachaStats: { totalSkinPulls: 0, totalGlyphPulls: 0, totalCoinsRefunded: 0 },
 };
 let save = (() => {
   try {
-    const raw = localStorage.getItem(SAVE_KEY);
-    if (!raw) return JSON.parse(JSON.stringify(DEFAULT_SAVE));
-    const s = JSON.parse(raw);
-    // Migrate / sanitize
-    s.deck = Array.isArray(s.deck) && s.deck.length === 8 && s.deck.every(id => G[id]) ? s.deck : DEFAULT_DECK.slice();
+    // Try v2 first, fall back to v1 migration
+    let raw = localStorage.getItem(SAVE_KEY);
+    let s = raw ? JSON.parse(raw) : null;
+    if (!s) {
+      // Try v1 migration
+      const v1raw = localStorage.getItem('glyphduel:save:v1');
+      if (v1raw) {
+        const v1 = JSON.parse(v1raw);
+        s = JSON.parse(JSON.stringify(DEFAULT_SAVE));
+        if (v1.deck) s.deck = v1.deck;
+        if (v1.difficulty) s.difficulty = v1.difficulty;
+        if (v1.lifetime) s.lifetime = Object.assign(s.lifetime, v1.lifetime);
+      } else {
+        s = JSON.parse(JSON.stringify(DEFAULT_SAVE));
+      }
+    }
+    // Sanitize fields
+    s.deck = Array.isArray(s.deck) ? s.deck.filter(id => G[id]) : STARTER_GLYPHS.slice();
+    if (s.deck.length === 0) s.deck = STARTER_GLYPHS.slice();
     s.difficulty = ['easy', 'normal', 'hard'].includes(s.difficulty) ? s.difficulty : 'normal';
     s.lifetime = Object.assign({ wins: 0, losses: 0, draws: 0, matches: 0, totalDmg: 0, totalCasts: 0, bestScore: 0 }, s.lifetime || {});
+    s.currency = Object.assign({ coins: STARTER_COINS }, s.currency || {});
+    s.inventory = s.inventory || {};
+    s.inventory.skins = Array.isArray(s.inventory.skins) ? s.inventory.skins : [STARTER_SKIN];
+    s.inventory.glyphs = Array.isArray(s.inventory.glyphs) ? s.inventory.glyphs.filter(id => G[id]) : STARTER_GLYPHS.slice();
+    // Ensure starter glyphs always unlocked
+    for (const id of STARTER_GLYPHS) if (!s.inventory.glyphs.includes(id)) s.inventory.glyphs.push(id);
+    // Ensure deck items are owned
+    s.deck = s.deck.filter(id => s.inventory.glyphs.includes(id));
+    if (s.deck.length === 0) s.deck = s.inventory.glyphs.slice(0, Math.min(8, s.inventory.glyphs.length));
+    if (!s.inventory.skins.includes(STARTER_SKIN)) s.inventory.skins.push(STARTER_SKIN);
+    s.equippedSkin = s.inventory.skins.includes(s.equippedSkin) ? s.equippedSkin : STARTER_SKIN;
+    s.pity = Object.assign({ skin: 0, glyph: 0 }, s.pity || {});
+    s.gachaStats = Object.assign({ totalSkinPulls: 0, totalGlyphPulls: 0, totalCoinsRefunded: 0 }, s.gachaStats || {});
     return s;
   } catch (e) { return JSON.parse(JSON.stringify(DEFAULT_SAVE)); }
 })();
@@ -222,25 +282,26 @@ function hitSE() { beep(80, 0.15, 'sawtooth', 0.18); beep(160, 0.06, 'square', 0
 function unfireSE() { beep(120, 0.05, 'square', 0.04); }
 function clickSE() { beep(660, 0.04, 'square', 0.06); }
 function comboSE() { beep(880, 0.08, 'square', 0.14); beep(1320, 0.12, 'square', 0.10); }
+function gachaPullSE() { beep(220, 0.20, 'sawtooth', 0.10); beep(330, 0.20, 'square', 0.07); }
+function gachaRevealCSE() { beep(440, 0.15, 'sine', 0.10); beep(660, 0.10, 'sine', 0.08); }
+function gachaRevealRSE() { beep(523, 0.18, 'square', 0.12); beep(784, 0.14, 'square', 0.10); }
+function gachaRevealLSE() {
+  beep(523, 0.20, 'square', 0.16);
+  setTimeout(() => beep(659, 0.20, 'square', 0.16), 100);
+  setTimeout(() => beep(784, 0.20, 'square', 0.16), 200);
+  setTimeout(() => beep(1047, 0.32, 'square', 0.18), 320);
+  setTimeout(() => beep(1568, 0.40, 'sawtooth', 0.10), 460);
+}
 
 // ═══════════════════════════════════════════════════════════
-// SCORE TIERS
+// SCORE TIERS / SYNERGY GATING
 // ═══════════════════════════════════════════════════════════
 function scoreToTier(s) { return s < 0.30 ? 'unfire' : s < 0.60 ? 'weak' : s < 0.85 ? 'normal' : 'critical'; }
 function tierMult(t) { return t === 'weak' ? 0.5 : t === 'critical' ? 1.5 : 1.0; }
 function tierColor(t) { return t === 'critical' ? '#ffdd44' : t === 'normal' ? '#7df9ff' : t === 'weak' ? '#888' : '#a44'; }
-
-// ═══════════════════════════════════════════════════════════
-// SYNERGY GATING (Sprint 1-A3)
-// Required-combo glyphs check prep state. comboMet returns
-// { ok, partial, hint } where partial means cast still fires but
-// at reduced effect.
-// ═══════════════════════════════════════════════════════════
 function recentCast(c, ids, withinSec) {
   if (!c.recentCasts) return false;
-  for (const r of c.recentCasts) {
-    if (ids.includes(r.id) && (state.battleClock - r.t) <= withinSec) return true;
-  }
+  for (const r of c.recentCasts) { if (ids.includes(r.id) && (state.battleClock - r.t) <= withinSec) return true; }
   return false;
 }
 function checkComboGate(c, t, glyphId) {
@@ -255,9 +316,7 @@ function checkComboGate(c, t, glyphId) {
     }
     case 'vengeance':
       return c.hp < c.hpMax / 2 ? { ok: true, hint: 'WOUNDED' } : { ok: false, partial: 0.5, hint: 'NEEDS HP<50% (½ COUNTER)' };
-    case 'manazone':
-    case 'resonance':
-    case 'trapset':
+    case 'manazone': case 'resonance': case 'trapset':
       return { ok: true, hint: '' };
     case 'trigger':
       return c.traps > 0 ? { ok: true, hint: '' } : { ok: false, partial: 0, hint: 'NO TRAP' };
@@ -267,7 +326,7 @@ function checkComboGate(c, t, glyphId) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// GAME STATE
+// BATTLE STATE
 // ═══════════════════════════════════════════════════════════
 const initialPlayer = (side, x) => ({
   side, x, y: 480, name: side === 'left' ? '1P' : 'AI',
@@ -276,30 +335,125 @@ const initialPlayer = (side, x) => ({
   burn: 0, burnDmg: 0, stun: 0, slowMana: 0, fastMana: 0, manaLock: 0, gravWeak: 0,
   traps: 0, vengeance: 0,
   lastCast: null, lastCastFlash: 0,
-  recentCasts: [], // { id, t (battleClock seconds) }
+  recentCasts: [],
 });
 const initialMatchStats = () => ({ casts: 0, dmgDealt: 0, dmgTaken: 0, maxScore: 0, combosTriggered: 0, hits: 0 });
 const newBattleState = () => ({
   p1: initialPlayer('left', 130),
   ai: initialPlayer('right', 830),
-  matchTime: 90.0,
-  battleClock: 0,         // seconds since match start (monotonic)
-  suddenDeath: false,
-  suddenDeathTime: 30.0,
+  matchTime: 90.0, battleClock: 0,
+  suddenDeath: false, suddenDeathTime: 30.0,
   gameOver: false, winner: null,
   effects: [], projectiles: [],
   scoreFeedback: null, drawTrail: [],
   bgPulse: 0, shakeFrames: 0, shakeAmp: 0, flashAlpha: 0,
   matchStats: initialMatchStats(),
+  rewardCoins: 0, rewardShown: false,
 });
-
-let scene = 'menu';   // 'menu' | 'deck' | 'difficulty' | 'battle' | 'result'
+let scene = 'menu';
 let state = newBattleState();
 let aiCooldown = 2.5;
-// Deck-builder transient state
 let deckEditing = save.deck.slice();
-// Menu hover state
 let pointerX = 0, pointerY = 0;
+
+// ═══════════════════════════════════════════════════════════
+// PHASE 1C — GACHA STATE / LOGIC
+// ═══════════════════════════════════════════════════════════
+const pullState = {
+  active: false, type: null, count: 0, results: [],
+  itemIdx: 0,        // which result is being revealed
+  itemPhase: 0,      // 0=particles, 1=orb, 2=flash, 3=settle
+  itemFrame: 0,      // frames in current phase
+  showSummary: false,
+};
+function rollRarity() {
+  const r = Math.random();
+  if (r < RARITY_RATES.L) return 'L';
+  if (r < RARITY_RATES.L + RARITY_RATES.R) return 'R';
+  return 'C';
+}
+function rollRareOrAbove() { return Math.random() < (RARITY_RATES.L / (RARITY_RATES.L + RARITY_RATES.R)) ? 'L' : 'R'; }
+function pickFromRarity(pool, rarity) {
+  const cands = pool.filter(p => p.rarity === rarity);
+  if (cands.length === 0) {
+    // fallback safety: down-grade L→R→C if pool lacks that tier
+    if (rarity === 'L') return pickFromRarity(pool, 'R');
+    if (rarity === 'R') return pickFromRarity(pool, 'C');
+    return null;
+  }
+  return cands[Math.floor(Math.random() * cands.length)];
+}
+function poolFor(type) { return type === 'skin' ? SKIN_POOL : GLYPH_GACHA_POOL; }
+function inventoryFor(type) { return save.inventory[type === 'skin' ? 'skins' : 'glyphs']; }
+function poolComplete(type) { return inventoryFor(type).length >= poolFor(type).length + (type === 'glyph' ? STARTER_GLYPHS.length : 0); }
+function pullGacha(type, count) {
+  const pool = poolFor(type);
+  const cost = count === 10 ? PULL_COST_TEN : PULL_COST_SINGLE;
+  if (save.currency.coins < cost) return { error: 'NOT_ENOUGH_COINS' };
+  if (poolComplete(type)) return { error: 'COMPLETE' };
+  save.currency.coins -= cost;
+  const results = [];
+  for (let i = 0; i < count; i++) {
+    save.pity[type]++;
+    const isLast10 = (count === 10 && i === count - 1);
+    const isPity = (save.pity[type] >= PITY_THRESHOLD);
+    let rarity = isPity ? 'L' : isLast10 ? rollRareOrAbove() : rollRarity();
+    if (rarity === 'L') save.pity[type] = 0;
+    const item = pickFromRarity(pool, rarity);
+    if (!item) continue;
+    const inv = inventoryFor(type);
+    let isDup = inv.includes(item.id);
+    let refund = 0;
+    if (isDup) { refund = REFUND_BY_RARITY[rarity]; save.currency.coins += refund; save.gachaStats.totalCoinsRefunded += refund; }
+    else { inv.push(item.id); }
+    results.push({ id: item.id, name: item.name, rarity, isDup, refund, type });
+  }
+  if (type === 'skin') save.gachaStats.totalSkinPulls += count;
+  else save.gachaStats.totalGlyphPulls += count;
+  persistSave();
+  return { results, cost, count };
+}
+function startPullAnimation(type, count) {
+  const out = pullGacha(type, count);
+  if (out.error) return out;
+  pullState.active = true; pullState.type = type; pullState.count = count;
+  pullState.results = out.results;
+  pullState.itemIdx = 0; pullState.itemPhase = 0; pullState.itemFrame = 0;
+  pullState.showSummary = false;
+  scene = 'gachaPull';
+  ensureAudio();
+  gachaPullSE();
+  return out;
+}
+function tickPullAnimation(dt) {
+  if (!pullState.active) return;
+  pullState.itemFrame++;
+  const result = pullState.results[pullState.itemIdx];
+  if (!result) { pullState.showSummary = true; pullState.active = false; scene = 'gachaResult'; return; }
+  const isLast = pullState.itemIdx === pullState.results.length - 1;
+  // Phase durations (frames @ ~60fps). Last item: full L animation if L; otherwise medium. Earlier items: quick.
+  const isL = result.rarity === 'L';
+  const fast = !isLast && !isL;
+  const PARTICLE_FR = fast ? 12 : (isL ? 36 : 24);
+  const ORB_FR =      fast ? 18 : (isL ? 60 : 36);
+  const FLASH_FR =    fast ? 8  : (isL ? 24 : 14);
+  const SETTLE_FR =   fast ? 14 : (isL ? 60 : 36);
+  if (pullState.itemPhase === 0 && pullState.itemFrame >= PARTICLE_FR) {
+    pullState.itemPhase = 1; pullState.itemFrame = 0;
+  } else if (pullState.itemPhase === 1 && pullState.itemFrame >= ORB_FR) {
+    pullState.itemPhase = 2; pullState.itemFrame = 0;
+    if (isL) gachaRevealLSE(); else if (result.rarity === 'R') gachaRevealRSE(); else gachaRevealCSE();
+  } else if (pullState.itemPhase === 2 && pullState.itemFrame >= FLASH_FR) {
+    pullState.itemPhase = 3; pullState.itemFrame = 0;
+  } else if (pullState.itemPhase === 3 && pullState.itemFrame >= SETTLE_FR) {
+    pullState.itemIdx++;
+    pullState.itemPhase = 0; pullState.itemFrame = 0;
+    if (pullState.itemIdx >= pullState.results.length) {
+      pullState.active = false; pullState.showSummary = true;
+      scene = 'gachaResult';
+    }
+  }
+}
 
 // ═══════════════════════════════════════════════════════════
 // CAST RESOLUTION
@@ -325,7 +479,6 @@ function applyDamage(target, dmg, opts) {
   state.flashAlpha = Math.max(state.flashAlpha, 0.18);
   hitSE();
   pushEffect({ type: 'hit', x: target.x, y: target.y - 30, life: 24, color: '#ff4488' });
-  // Stats
   if (target === state.ai) { state.matchStats.dmgDealt += dmg; state.matchStats.hits++; }
   else state.matchStats.dmgTaken += dmg;
   triggerVengeance(target, opts.attacker);
@@ -334,8 +487,7 @@ function applyDamage(target, dmg, opts) {
 }
 function triggerVengeance(target, attacker) {
   if (!attacker || target.vengeance <= 0) return;
-  const counter = target.vengeance;     // 0 = none, 0.5 = partial, 1 = full
-  target.vengeance = 0;
+  const counter = target.vengeance; target.vengeance = 0;
   const dmg = 30 * counter;
   if (dmg <= 0) return;
   setTimeout(() => { if (!state.gameOver) { applyDamage(attacker, dmg, { attacker: target }); pushEffect({ type: 'vengeanceFlash', who: attacker, life: 24 }); beep(220, 0.15, 'sawtooth', 0.15); } }, 200);
@@ -353,28 +505,21 @@ function castGlyph(casterKey, glyphId, score, tier) {
     state.scoreFeedback = { glyphId, score, tier, fired: false, reason: 'NO MANA', caster: casterKey, life: 80 };
     unfireSE(); return;
   }
-  // Synergy gate
   const gate = checkComboGate(c, t, glyphId);
   if (!gate.ok && gate.partial === 0) {
-    // Block: spend mana but no effect (e.g., trigger without trap, reverse without enemy buff)
     c.mana -= manaCost;
     state.scoreFeedback = { glyphId, score, tier, fired: false, reason: gate.hint, caster: casterKey, life: 80 };
     unfireSE();
     return;
   }
   c.mana -= manaCost;
-  c.lastCast = glyphId;
-  c.lastCastFlash = 60;
+  c.lastCast = glyphId; c.lastCastFlash = 60;
   c.recentCasts.push({ id: glyphId, t: state.battleClock });
-  // keep last 8 casts
   if (c.recentCasts.length > 8) c.recentCasts.shift();
-
   let mult = tierMult(tier);
   if (def.cat === 'attack' && c.doubleNext > 0) { mult *= 2; c.doubleNext = 0; }
-  // Required-combo partial penalty
   if (!gate.ok && gate.partial != null) mult *= gate.partial;
   if (gate.ok && gate.hint) {
-    // Successful combo
     state.matchStats.combosTriggered++;
     if (casterKey === 'p1') comboSE();
     pushEffect({ type: 'comboFlash', who: c, life: 40, hint: gate.hint });
@@ -382,91 +527,42 @@ function castGlyph(casterKey, glyphId, score, tier) {
   state.scoreFeedback = { glyphId, score, tier, fired: true, caster: casterKey, life: 80, comboHint: gate.hint };
   fireSE(glyphId, tier);
   if (tier === 'critical') state.flashAlpha = Math.max(state.flashAlpha, 0.22);
-  // Stats
-  if (casterKey === 'p1') {
-    state.matchStats.casts++;
-    if (score > state.matchStats.maxScore) state.matchStats.maxScore = score;
-  }
-  // Mirror: next non-defense glyph fires twice
+  if (casterKey === 'p1') { state.matchStats.casts++; if (score > state.matchStats.maxScore) state.matchStats.maxScore = score; }
   const fireTimes = c.mirrorNext > 0 && def.cat !== 'defense' ? (c.mirrorNext = 0, 2) : 1;
   for (let i = 0; i < fireTimes; i++) resolveGlyphEffect(c, t, casterKey, otherKey, def, mult, glyphId);
 }
 function resolveGlyphEffect(c, t, ck, ok, def, mult, glyphId) {
   switch (glyphId) {
-    case 'bolt':
-      pushEffect({ type: 'boltBeam', from: c, to: t, life: 16, color: def.color, dmg: def.dmg * mult, applied: false, attacker: c });
-      break;
-    case 'fireball':
-      state.projectiles.push({ x: c.x, y: c.y - 30, tx: t.x, ty: t.y - 30, t: 0, dur: 38, dmg: def.dmg * mult, color: def.color, target: ok, kind: 'fireball', attacker: c });
-      break;
-    case 'icicle':
-      state.projectiles.push({ x: c.x, y: c.y - 30, tx: t.x, ty: t.y - 30, t: 0, dur: 22, dmg: def.dmg * mult, color: def.color, target: ok, kind: 'icicle', attacker: c });
-      break;
-    case 'windblade':
-      state.projectiles.push({ x: c.x, y: c.y - 40, tx: t.x, ty: t.y - 40, t: 0, dur: 18, dmg: def.dmg * mult, color: def.color, target: ok, kind: 'windblade', attacker: c });
-      break;
-    case 'beam':
-      pushEffect({ type: 'beamHoming', from: c, to: t, life: 24, color: def.color, dmg: def.dmg * mult, applied: false, attacker: c });
-      break;
-    case 'gravorb':
-      pushEffect({ type: 'boltBeam', from: c, to: t, life: 14, color: def.color, dmg: def.dmg * mult, applied: false, attacker: c });
-      c.gravWeak = 1;
-      break;
-    case 'lightnet':
-      pushEffect({ type: 'netHit', who: t, life: 30, color: def.color, dmg: def.dmg * mult, applied: false, attacker: c });
-      t.stun = Math.max(t.stun, 1.5 * mult);
-      break;
-    case 'flame':
-      pushEffect({ type: 'flameBurst', from: c, to: t, life: 22, color: def.color, dmg: def.dmg * mult, applied: false, attacker: c });
-      t.burn = Math.max(t.burn, 3.0 * mult);
-      t.burnDmg = Math.max(t.burnDmg, 3 * mult);
-      break;
-    case 'shadowstrike':
-      pushEffect({ type: 'tpFlash', who: c, life: 12 });
-      pushEffect({ type: 'tpFlash', who: t, life: 12 });
-      pushEffect({ type: 'boltBeam', from: c, to: t, life: 14, color: def.color, dmg: def.dmg * mult, applied: false, attacker: c });
-      break;
-    case 'doubleburst':
-      pushEffect({ type: 'megaBoom', x: t.x, y: t.y - 30, life: 36, color: def.color, dmg: def.dmg * mult, applied: false, attacker: c, target: t });
-      state.flashAlpha = Math.max(state.flashAlpha, 0.35);
-      break;
-    case 'barrier':       c.barrier = 3.0 * mult; pushEffect({ type: 'barrierStart', who: c, life: 30 }); break;
-    case 'reflect':       c.reflectNext = 1; pushEffect({ type: 'reflectStart', who: c, life: 30 }); break;
-    case 'heal':          c.hp = Math.min(c.hpMax, c.hp + 30 * mult); pushEffect({ type: 'healAura', who: c, life: 50 }); break;
-    case 'cleanse':       c.burn = 0; c.burnDmg = 0; c.stun = 0; c.slowMana = 0; c.manaLock = 0; pushEffect({ type: 'cleanseAura', who: c, life: 30 }); break;
-    case 'mirror':        c.mirrorNext = 1; pushEffect({ type: 'mirrorStart', who: c, life: 30 }); break;
-    case 'immortal':      c.invuln = 3.0 * mult; pushEffect({ type: 'invulnStart', who: c, life: 36 }); break;
-    case 'manadrain': {
-      const drain = Math.min(t.mana, 20 * mult);
-      t.mana -= drain;
-      c.mana = Math.min(c.manaMax, c.mana + drain * 0.5);
-      pushEffect({ type: 'manaDrainBeam', from: c, to: t, life: 20, color: def.color });
-      break;
-    }
-    case 'selfbuff':      c.doubleNext = 1; pushEffect({ type: 'powerStart', who: c, life: 30 }); break;
-    case 'teleport':      c.parry = 0.5 * mult; pushEffect({ type: 'tpFlash', who: c, life: 18 }); break;
-    case 'windrun':       c.fastMana = Math.max(c.fastMana, 3.0 * mult); pushEffect({ type: 'windAura', who: c, life: 40 }); break;
-    case 'timeslow':      t.slowMana = Math.max(t.slowMana, 3.0 * mult); pushEffect({ type: 'slowAura', who: t, life: 40 }); break;
-    case 'shadowwalk':    c.parry = 0.6 * mult; c.doubleNext = 1; pushEffect({ type: 'tpFlash', who: c, life: 18 }); break;
-    case 'trapset':       c.traps = Math.min(2, c.traps + 1); pushEffect({ type: 'trapPlace', who: c, life: 40 }); break;
-    case 'trigger': {
-      const dmgEach = 25 * mult;
-      for (let i = 0; i < c.traps; i++) applyDamage(t, dmgEach, { attacker: c });
-      pushEffect({ type: 'trapBoom', x: t.x, y: t.y - 30, life: 30, color: def.color });
-      c.traps = 0;
-      break;
-    }
-    case 'manazone':      c.fastMana = Math.max(c.fastMana, 5.0 * mult); pushEffect({ type: 'sigilAura', who: c, life: 60 }); break;
-    case 'resonance':     c.halveNext = 1; pushEffect({ type: 'resAura', who: c, life: 30 }); break;
-    case 'parry':         c.parry = 1.0 * mult; pushEffect({ type: 'parryStart', who: c, life: 30 }); break;
-    case 'counterspell':  t.manaLock = Math.max(t.manaLock, 1.0 * mult); pushEffect({ type: 'lockBeam', from: c, to: t, life: 22, color: def.color }); break;
-    case 'reverse': {
-      const fields = ['barrier', 'parry', 'invuln', 'reflectNext', 'mirrorNext', 'doubleNext', 'halveNext', 'fastMana'];
-      for (const f of fields) { c[f] = Math.max(c[f], t[f]); t[f] = 0; }
-      pushEffect({ type: 'stealBeam', from: c, to: t, life: 24 });
-      break;
-    }
-    case 'vengeance':     c.vengeance = mult >= 1 ? 1 : 0.5; pushEffect({ type: 'vengeanceStart', who: c, life: 30 }); break;
+    case 'bolt': pushEffect({ type: 'boltBeam', from: c, to: t, life: 16, color: def.color, dmg: def.dmg * mult, applied: false, attacker: c }); break;
+    case 'fireball': state.projectiles.push({ x: c.x, y: c.y - 30, tx: t.x, ty: t.y - 30, t: 0, dur: 38, dmg: def.dmg * mult, color: def.color, target: ok, kind: 'fireball', attacker: c }); break;
+    case 'icicle': state.projectiles.push({ x: c.x, y: c.y - 30, tx: t.x, ty: t.y - 30, t: 0, dur: 22, dmg: def.dmg * mult, color: def.color, target: ok, kind: 'icicle', attacker: c }); break;
+    case 'windblade': state.projectiles.push({ x: c.x, y: c.y - 40, tx: t.x, ty: t.y - 40, t: 0, dur: 18, dmg: def.dmg * mult, color: def.color, target: ok, kind: 'windblade', attacker: c }); break;
+    case 'beam': pushEffect({ type: 'beamHoming', from: c, to: t, life: 24, color: def.color, dmg: def.dmg * mult, applied: false, attacker: c }); break;
+    case 'gravorb': pushEffect({ type: 'boltBeam', from: c, to: t, life: 14, color: def.color, dmg: def.dmg * mult, applied: false, attacker: c }); c.gravWeak = 1; break;
+    case 'lightnet': pushEffect({ type: 'netHit', who: t, life: 30, color: def.color, dmg: def.dmg * mult, applied: false, attacker: c }); t.stun = Math.max(t.stun, 1.5 * mult); break;
+    case 'flame': pushEffect({ type: 'flameBurst', from: c, to: t, life: 22, color: def.color, dmg: def.dmg * mult, applied: false, attacker: c }); t.burn = Math.max(t.burn, 3.0 * mult); t.burnDmg = Math.max(t.burnDmg, 3 * mult); break;
+    case 'shadowstrike': pushEffect({ type: 'tpFlash', who: c, life: 12 }); pushEffect({ type: 'tpFlash', who: t, life: 12 }); pushEffect({ type: 'boltBeam', from: c, to: t, life: 14, color: def.color, dmg: def.dmg * mult, applied: false, attacker: c }); break;
+    case 'doubleburst': pushEffect({ type: 'megaBoom', x: t.x, y: t.y - 30, life: 36, color: def.color, dmg: def.dmg * mult, applied: false, attacker: c, target: t }); state.flashAlpha = Math.max(state.flashAlpha, 0.35); break;
+    case 'barrier': c.barrier = 3.0 * mult; pushEffect({ type: 'barrierStart', who: c, life: 30 }); break;
+    case 'reflect': c.reflectNext = 1; pushEffect({ type: 'reflectStart', who: c, life: 30 }); break;
+    case 'heal': c.hp = Math.min(c.hpMax, c.hp + 30 * mult); pushEffect({ type: 'healAura', who: c, life: 50 }); break;
+    case 'cleanse': c.burn = 0; c.burnDmg = 0; c.stun = 0; c.slowMana = 0; c.manaLock = 0; pushEffect({ type: 'cleanseAura', who: c, life: 30 }); break;
+    case 'mirror': c.mirrorNext = 1; pushEffect({ type: 'mirrorStart', who: c, life: 30 }); break;
+    case 'immortal': c.invuln = 3.0 * mult; pushEffect({ type: 'invulnStart', who: c, life: 36 }); break;
+    case 'manadrain': { const drain = Math.min(t.mana, 20 * mult); t.mana -= drain; c.mana = Math.min(c.manaMax, c.mana + drain * 0.5); pushEffect({ type: 'manaDrainBeam', from: c, to: t, life: 20, color: def.color }); break; }
+    case 'selfbuff': c.doubleNext = 1; pushEffect({ type: 'powerStart', who: c, life: 30 }); break;
+    case 'teleport': c.parry = 0.5 * mult; pushEffect({ type: 'tpFlash', who: c, life: 18 }); break;
+    case 'windrun': c.fastMana = Math.max(c.fastMana, 3.0 * mult); pushEffect({ type: 'windAura', who: c, life: 40 }); break;
+    case 'timeslow': t.slowMana = Math.max(t.slowMana, 3.0 * mult); pushEffect({ type: 'slowAura', who: t, life: 40 }); break;
+    case 'shadowwalk': c.parry = 0.6 * mult; c.doubleNext = 1; pushEffect({ type: 'tpFlash', who: c, life: 18 }); break;
+    case 'trapset': c.traps = Math.min(2, c.traps + 1); pushEffect({ type: 'trapPlace', who: c, life: 40 }); break;
+    case 'trigger': { const dmgEach = 25 * mult; for (let i = 0; i < c.traps; i++) applyDamage(t, dmgEach, { attacker: c }); pushEffect({ type: 'trapBoom', x: t.x, y: t.y - 30, life: 30, color: def.color }); c.traps = 0; break; }
+    case 'manazone': c.fastMana = Math.max(c.fastMana, 5.0 * mult); pushEffect({ type: 'sigilAura', who: c, life: 60 }); break;
+    case 'resonance': c.halveNext = 1; pushEffect({ type: 'resAura', who: c, life: 30 }); break;
+    case 'parry': c.parry = 1.0 * mult; pushEffect({ type: 'parryStart', who: c, life: 30 }); break;
+    case 'counterspell': t.manaLock = Math.max(t.manaLock, 1.0 * mult); pushEffect({ type: 'lockBeam', from: c, to: t, life: 22, color: def.color }); break;
+    case 'reverse': { const fields = ['barrier', 'parry', 'invuln', 'reflectNext', 'mirrorNext', 'doubleNext', 'halveNext', 'fastMana']; for (const f of fields) { c[f] = Math.max(c[f], t[f]); t[f] = 0; } pushEffect({ type: 'stealBeam', from: c, to: t, life: 24 }); break; }
+    case 'vengeance': c.vengeance = mult >= 1 ? 1 : 0.5; pushEffect({ type: 'vengeanceStart', who: c, life: 30 }); break;
   }
 }
 function pushEffect(e) { state.effects.push(e); }
@@ -476,7 +572,8 @@ function endMatch(winnerKey) {
   beep(80, 0.6, 'sawtooth', 0.15);
   setTimeout(() => beep(440, 0.3, 'square', 0.12), 200);
   setTimeout(() => beep(660, 0.3, 'square', 0.12), 380);
-  // Lifetime stats
+  // Phase 1C: coin gain on win
+  if (winnerKey === 'p1') { state.rewardCoins = COIN_PER_WIN; save.currency.coins += COIN_PER_WIN; }
   save.lifetime.matches++;
   if (winnerKey === 'p1') save.lifetime.wins++;
   else if (winnerKey === 'ai') save.lifetime.losses++;
@@ -485,80 +582,54 @@ function endMatch(winnerKey) {
   save.lifetime.totalCasts += state.matchStats.casts;
   if (state.matchStats.maxScore > save.lifetime.bestScore) save.lifetime.bestScore = state.matchStats.maxScore;
   persistSave();
-  // Scene auto-transitions to result after a brief delay (handled in update)
 }
 
 // ═══════════════════════════════════════════════════════════
-// AI TIERS (Sprint 1-A5)
+// AI TIERS
 // ═══════════════════════════════════════════════════════════
 const AI_POOL_EASY = ['bolt', 'fireball', 'barrier', 'heal', 'parry'];
 const AI_POOL_NORMAL = ['bolt', 'fireball', 'icicle', 'windblade', 'gravorb', 'lightnet', 'flame', 'shadowstrike', 'barrier', 'heal', 'cleanse', 'manadrain', 'selfbuff', 'parry', 'windrun', 'timeslow', 'counterspell', 'reflect'];
 const AI_POOL_HARD = G_ORDER.slice();
 function aiPickHard() {
   const ai = state.ai, p1 = state.p1, mana = ai.mana;
-  // 1) traps + trigger combo
   if (ai.traps > 0 && p1.parry === 0 && p1.barrier === 0 && mana >= 10 && Math.random() < 0.6) return 'trigger';
   if (ai.traps < 2 && p1.hp > 50 && mana >= 30 && Math.random() < 0.18) return 'trapset';
-  // 2) Heal at low HP
   if (ai.hp < 35 && mana >= 40 && Math.random() < 0.7) return 'heal';
-  // 3) Vengeance setup if wounded
   if (ai.hp < 50 && ai.vengeance === 0 && mana >= 70 && Math.random() < 0.25) return 'vengeance';
-  // 4) Buff prep then doubleburst
   const recentlyFire = recentCast(ai, ['fireball', 'flame'], 3);
   if (recentlyFire && mana >= 80 && Math.random() < 0.55) return 'doubleburst';
   if (!recentlyFire && mana >= 35 && Math.random() < 0.18) return 'fireball';
-  // 5) Defense prep then immortal
   const recentlyDef = recentCast(ai, ['barrier', 'reflect'], 4);
   if (ai.hp < 60 && recentlyDef && mana >= 70 && Math.random() < 0.4) return 'immortal';
-  // 6) Drain when player has high mana
   if (p1.mana > 60 && mana >= 35 && Math.random() < 0.3) return 'manadrain';
-  // 7) Reverse when player buffed
   const p1Buffed = (p1.barrier > 0 || p1.doubleNext > 0 || p1.mirrorNext > 0 || p1.fastMana > 0 || p1.reflectNext > 0);
   if (p1Buffed && mana >= 60 && Math.random() < 0.4) return 'reverse';
-  // 8) Counter when player drawing
   if (drawing && mana >= 40 && Math.random() < 0.18) return 'counterspell';
-  // 9) Self empower → big attack
   if (ai.doubleNext > 0 && mana >= 50) return 'beam';
   if (ai.doubleNext === 0 && mana >= 45 && Math.random() < 0.18) return 'selfbuff';
-  // 10) Apply pressure
   if (p1.hp < 25 && mana >= 25) {
     const burst = ['bolt', 'fireball', 'beam', 'doubleburst'].filter(id => mana >= G[id].mana);
     return burst[Math.floor(Math.random() * burst.length)];
   }
-  // Fallback
   return null;
 }
 function pickAI(diff) {
   const pool = diff === 'easy' ? AI_POOL_EASY : diff === 'hard' ? AI_POOL_HARD : AI_POOL_NORMAL;
   const ai = state.ai;
-  if (diff === 'hard') {
-    const strategic = aiPickHard();
-    if (strategic && ai.mana >= G[strategic].mana) return strategic;
-  }
-  // Heuristic baseline
+  if (diff === 'hard') { const strategic = aiPickHard(); if (strategic && ai.mana >= G[strategic].mana) return strategic; }
   if (ai.hp < 35 && ai.mana >= 40 && Math.random() < (diff === 'easy' ? 0.55 : 0.7)) return 'heal';
   if (state.p1.hp < 25 && ai.mana >= 25) return ['bolt', 'fireball'].find(id => ai.mana >= G[id].mana) || pool[0];
   const candidates = pool.filter(id => G[id] && ai.mana >= G[id].mana);
   if (candidates.length === 0) return null;
   return candidates[Math.floor(Math.random() * candidates.length)];
 }
-function aiScoreFor(diff) {
-  if (diff === 'easy') return 0.55 + Math.random() * 0.20;   // 0.55–0.75
-  if (diff === 'hard') return 0.80 + Math.random() * 0.18;   // 0.80–0.98
-  return 0.62 + Math.random() * 0.30;                          // 0.62–0.92
-}
-function aiCooldownFor(diff) {
-  if (diff === 'easy') return 4.0 + Math.random() * 2.0;
-  if (diff === 'hard') return 1.8 + Math.random() * 1.2;
-  return 2.4 + Math.random() * 2.0;
-}
+function aiScoreFor(diff) { if (diff === 'easy') return 0.55 + Math.random() * 0.20; if (diff === 'hard') return 0.80 + Math.random() * 0.18; return 0.62 + Math.random() * 0.30; }
+function aiCooldownFor(diff) { if (diff === 'easy') return 4.0 + Math.random() * 2.0; if (diff === 'hard') return 1.8 + Math.random() * 1.2; return 2.4 + Math.random() * 2.0; }
 function updateAI(dt) {
   if (state.gameOver) return;
   if (state.ai.stun > 0 || state.ai.manaLock > 0) { aiCooldown = Math.max(aiCooldown, 0.5); return; }
-  aiCooldown -= dt;
-  if (aiCooldown > 0) return;
-  const pick = pickAI(save.difficulty);
-  if (!pick) { aiCooldown = 1.0; return; }
+  aiCooldown -= dt; if (aiCooldown > 0) return;
+  const pick = pickAI(save.difficulty); if (!pick) { aiCooldown = 1.0; return; }
   const score = aiScoreFor(save.difficulty);
   castGlyph('ai', pick, score, scoreToTier(score));
   aiCooldown = aiCooldownFor(save.difficulty);
@@ -569,7 +640,6 @@ function updateAI(dt) {
 // ═══════════════════════════════════════════════════════════
 let drawing = false, stroke = [];
 function canvasCoords(ev) { const r = canvas.getBoundingClientRect(); return { x: (ev.clientX - r.left) * (canvas.width / r.width), y: (ev.clientY - r.top) * (canvas.height / r.height) }; }
-
 canvas.addEventListener('pointermove', e => {
   const p = canvasCoords(e); pointerX = p.x; pointerY = p.y;
   if (drawing) {
@@ -588,6 +658,11 @@ canvas.addEventListener('pointerdown', e => {
   if (scene === 'deck') { handleDeckClick(p); return; }
   if (scene === 'difficulty') { handleDifficultyClick(p); return; }
   if (scene === 'result') { handleResultClick(p); return; }
+  if (scene === 'gacha') { handleGachaClick(p); return; }
+  if (scene === 'gachaPull') { handlePullClick(p); return; }
+  if (scene === 'gachaResult') { handleGachaResultClick(p); return; }
+  if (scene === 'inventory') { handleInventoryClick(p); return; }
+  if (scene === 'probability') { handleProbabilityClick(p); return; }
   if (scene === 'battle' && !state.gameOver) {
     drawing = true; stroke = [p]; state.drawTrail = stroke;
     startDrawTone();
@@ -611,13 +686,13 @@ canvas.addEventListener('pointercancel', endStroke);
 canvas.addEventListener('pointerleave', e => { if (drawing) endStroke(e); });
 window.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
-    if (scene === 'deck') { goMenu(); e.preventDefault(); return; }
-    if (scene === 'difficulty') { goMenu(); e.preventDefault(); return; }
-    if (scene === 'result') { goMenu(); e.preventDefault(); return; }
+    if (scene === 'deck' || scene === 'difficulty' || scene === 'result' || scene === 'gacha' || scene === 'inventory' || scene === 'probability') { goMenu(); e.preventDefault(); return; }
+    if (scene === 'gachaResult') { goGacha(); e.preventDefault(); return; }
   }
   if (e.key === ' ' || e.key === 'Enter') {
     if (scene === 'result') { startBattle(); e.preventDefault(); }
     else if (scene === 'menu') { startBattle(); e.preventDefault(); }
+    else if (scene === 'gachaPull') { skipPullAnimation(); e.preventDefault(); }
   }
 });
 
@@ -627,19 +702,31 @@ window.addEventListener('keydown', e => {
 function goMenu() { scene = 'menu'; updateHint(); }
 function goDeck() { deckEditing = save.deck.slice(); scene = 'deck'; updateHint(); }
 function goDifficulty() { scene = 'difficulty'; updateHint(); }
+function goGacha() { scene = 'gacha'; updateHint(); }
+function goInventory() { scene = 'inventory'; updateHint(); }
+function goProbability() { scene = 'probability'; updateHint(); }
 function startBattle() {
-  state = newBattleState();
-  aiCooldown = 1.5;
-  scene = 'battle';
-  updateHint();
+  // Need at least 1 owned glyph in deck
+  if (save.deck.length === 0) save.deck = save.inventory.glyphs.slice(0, Math.min(8, save.inventory.glyphs.length));
+  setActiveTemplates(save.deck);
+  state = newBattleState(); aiCooldown = 1.5; scene = 'battle'; updateHint();
 }
 function gotoResult() { scene = 'result'; updateHint(); }
+function skipPullAnimation() {
+  if (!pullState.active) return;
+  pullState.active = false; pullState.showSummary = true; scene = 'gachaResult'; updateHint();
+}
 function updateHint() {
   if (scene === 'menu') hintEl.textContent = 'CLICK BUTTONS · ENTER FOR QUICK BATTLE';
-  else if (scene === 'deck') hintEl.textContent = 'CLICK TO TOGGLE · 8 OF 30 · ESC TO BACK';
+  else if (scene === 'deck') hintEl.textContent = 'CLICK OWNED GLYPHS · 1-8 ITEMS · ESC TO BACK';
   else if (scene === 'difficulty') hintEl.textContent = 'CLICK A LEVEL · ESC TO BACK';
-  else if (scene === 'battle') hintEl.textContent = 'DRAW WITH MOUSE OR FINGER · 8 GLYPHS IN DECK';
+  else if (scene === 'battle') hintEl.textContent = 'DRAW WITH MOUSE OR FINGER';
   else if (scene === 'result') hintEl.textContent = 'CLICK BUTTON · SPACE TO REMATCH · ESC TO MENU';
+  else if (scene === 'gacha') hintEl.textContent = 'CLICK GACHA TO PULL · ESC TO MENU';
+  else if (scene === 'gachaPull') hintEl.textContent = 'PULLING... · SPACE/ENTER TO SKIP';
+  else if (scene === 'gachaResult') hintEl.textContent = 'CLICK TO CLOSE · ESC FOR GACHA';
+  else if (scene === 'inventory') hintEl.textContent = 'BROWSE OWNED · CLICK SKIN TO EQUIP · ESC TO MENU';
+  else if (scene === 'probability') hintEl.textContent = 'PROBABILITY TABLE · ESC TO BACK';
 }
 updateHint();
 
@@ -648,27 +735,27 @@ updateHint();
 // ═══════════════════════════════════════════════════════════
 function inRect(p, x, y, w, h) { return p.x >= x && p.x <= x + w && p.y >= y && p.y <= y + h; }
 function handleMenuClick(p) {
-  // Battle button
-  if (inRect(p, 380, 360, 200, 60)) { clickSE(); startBattle(); return; }
-  // Deck
-  if (inRect(p, 280, 440, 180, 50)) { clickSE(); goDeck(); return; }
-  // Difficulty
-  if (inRect(p, 500, 440, 180, 50)) { clickSE(); goDifficulty(); return; }
+  if (inRect(p, 380, 320, 200, 60)) { clickSE(); startBattle(); return; }
+  if (inRect(p, 100, 410, 180, 50)) { clickSE(); goDeck(); return; }
+  if (inRect(p, 290, 410, 180, 50)) { clickSE(); goDifficulty(); return; }
+  if (inRect(p, 480, 410, 180, 50)) { clickSE(); goGacha(); return; }
+  if (inRect(p, 670, 410, 200, 50)) { clickSE(); goInventory(); return; }
 }
 function handleDeckClick(p) {
   // Save / cancel buttons
   if (inRect(p, 720, 580, 200, 40)) {
-    if (deckEditing.length === 8) { clickSE(); save.deck = deckEditing.slice(); persistSave(); setActiveTemplates(save.deck); goMenu(); }
+    if (deckEditing.length >= 1 && deckEditing.length <= 8) { clickSE(); save.deck = deckEditing.slice(); persistSave(); setActiveTemplates(save.deck); goMenu(); }
     return;
   }
   if (inRect(p, 40, 580, 200, 40)) { clickSE(); goMenu(); return; }
-  if (inRect(p, 380, 580, 200, 40)) { clickSE(); deckEditing = DEFAULT_DECK.slice(); return; }
-  // Grid (6 cols × 5 rows)
+  if (inRect(p, 380, 580, 200, 40)) { clickSE(); deckEditing = save.inventory.glyphs.slice(0, Math.min(8, save.inventory.glyphs.length)); return; }
   const cols = 6, cellW = 145, cellH = 92, startX = (960 - cols * cellW) / 2, startY = 70;
   for (let i = 0; i < G_ORDER.length; i++) {
     const cx = startX + (i % cols) * cellW, cy = startY + Math.floor(i / cols) * cellH;
     if (inRect(p, cx + 2, cy + 2, cellW - 4, cellH - 4)) {
       const id = G_ORDER[i];
+      const owned = save.inventory.glyphs.includes(id);
+      if (!owned) { unfireSE(); return; }
       const idx = deckEditing.indexOf(id);
       if (idx >= 0) { deckEditing.splice(idx, 1); clickSE(); }
       else if (deckEditing.length < 8) { deckEditing.push(id); clickSE(); }
@@ -679,14 +766,71 @@ function handleDeckClick(p) {
 }
 function handleDifficultyClick(p) {
   const opts = [['easy', 280], ['normal', 480], ['hard', 680]];
-  for (const [diff, cx] of opts) {
-    if (inRect(p, cx - 80, 280, 160, 100)) { clickSE(); save.difficulty = diff; persistSave(); goMenu(); return; }
-  }
+  for (const [diff, cx] of opts) { if (inRect(p, cx - 80, 280, 160, 100)) { clickSE(); save.difficulty = diff; persistSave(); goMenu(); return; } }
   if (inRect(p, 380, 480, 200, 40)) { clickSE(); goMenu(); return; }
 }
 function handleResultClick(p) {
-  if (inRect(p, 280, 520, 180, 50)) { clickSE(); startBattle(); return; }
-  if (inRect(p, 500, 520, 180, 50)) { clickSE(); goMenu(); return; }
+  if (inRect(p, 280, 580, 180, 44)) { clickSE(); startBattle(); return; }
+  if (inRect(p, 500, 580, 180, 44)) { clickSE(); goMenu(); return; }
+}
+function handleGachaClick(p) {
+  // Skin gacha box
+  if (inRect(p, 60, 220, 380, 80)) { /* card click no-op */ }
+  if (inRect(p, 100, 320, 130, 38)) { tryPull('skin', 1); return; }
+  if (inRect(p, 260, 320, 130, 38)) { tryPull('skin', 10); return; }
+  // Glyph gacha box
+  if (inRect(p, 520, 320, 130, 38)) { tryPull('glyph', 1); return; }
+  if (inRect(p, 680, 320, 130, 38)) { tryPull('glyph', 10); return; }
+  // Buttons row
+  if (inRect(p, 60, 540, 180, 40)) { clickSE(); goInventory(); return; }
+  if (inRect(p, 270, 540, 180, 40)) { clickSE(); goProbability(); return; }
+  if (inRect(p, 480, 540, 180, 40)) { clickSE(); goMenu(); return; }
+}
+function tryPull(type, count) {
+  if (poolComplete(type)) { unfireSE(); return; }
+  const cost = count === 10 ? PULL_COST_TEN : PULL_COST_SINGLE;
+  if (save.currency.coins < cost) { unfireSE(); return; }
+  clickSE();
+  startPullAnimation(type, count);
+}
+function handlePullClick(p) {
+  // tap to skip animation
+  skipPullAnimation();
+}
+function handleGachaResultClick(p) {
+  if (inRect(p, 60, 580, 200, 40)) { clickSE(); goGacha(); return; }
+  if (inRect(p, 290, 580, 200, 40)) {
+    const t = pullState.type;
+    if (poolComplete(t) || save.currency.coins < (pullState.count === 10 ? PULL_COST_TEN : PULL_COST_SINGLE)) { unfireSE(); return; }
+    clickSE();
+    startPullAnimation(t, pullState.count);
+    return;
+  }
+  if (inRect(p, 520, 580, 200, 40)) { clickSE(); goInventory(); return; }
+  if (inRect(p, 750, 580, 180, 40)) { clickSE(); goMenu(); return; }
+}
+function handleInventoryClick(p) {
+  if (inRect(p, 760, 580, 180, 40)) { clickSE(); goMenu(); return; }
+  if (inRect(p, 40, 580, 180, 40)) { clickSE(); inventoryTab = 'skins'; return; }
+  if (inRect(p, 240, 580, 180, 40)) { clickSE(); inventoryTab = 'glyphs'; return; }
+  // Skin click → equip
+  if (inventoryTab === 'skins') {
+    const cols = 5, cellW = 170, cellH = 200, startX = (960 - cols * cellW) / 2, startY = 70;
+    for (let i = 0; i < SKIN_POOL.length; i++) {
+      const cx = startX + (i % cols) * cellW, cy = startY + Math.floor(i / cols) * cellH;
+      if (inRect(p, cx + 4, cy + 4, cellW - 8, cellH - 8)) {
+        const sk = SKIN_POOL[i];
+        if (save.inventory.skins.includes(sk.id)) {
+          save.equippedSkin = sk.id; persistSave(); clickSE();
+        } else unfireSE();
+        return;
+      }
+    }
+  }
+}
+let inventoryTab = 'skins';
+function handleProbabilityClick(p) {
+  if (inRect(p, 380, 580, 200, 40)) { clickSE(); goMenu(); return; }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -696,6 +840,7 @@ let burnTickAcc = { p1: 0, ai: 0 };
 let postGameClock = 0;
 function update(dt) {
   state.bgPulse += dt;
+  if (scene === 'gachaPull') { tickPullAnimation(dt); return; }
   if (scene !== 'battle') return;
   if (state.gameOver) {
     state.flashAlpha *= 0.92;
@@ -706,17 +851,12 @@ function update(dt) {
   }
   postGameClock = 0;
   state.battleClock += dt;
-  // Time / sudden death
   if (!state.suddenDeath) {
     state.matchTime -= dt;
     if (state.matchTime <= 0) {
       state.matchTime = 0;
-      if (state.p1.hp === state.ai.hp) {
-        state.suddenDeath = true;
-      } else {
-        endMatch(state.p1.hp > state.ai.hp ? 'p1' : 'ai');
-        return;
-      }
+      if (state.p1.hp === state.ai.hp) state.suddenDeath = true;
+      else { endMatch(state.p1.hp > state.ai.hp ? 'p1' : 'ai'); return; }
     }
   } else {
     state.suddenDeathTime -= dt;
@@ -725,7 +865,6 @@ function update(dt) {
       return;
     }
   }
-  // Mana regen (halved during sudden death)
   for (const k of ['p1', 'ai']) {
     const p = state[k];
     let regen = state.suddenDeath ? 0 : 5;
@@ -744,8 +883,7 @@ function update(dt) {
       while (burnTickAcc[k] >= 0.5 && p.burn > 0) {
         burnTickAcc[k] -= 0.5;
         p.hp = Math.max(0, p.hp - p.burnDmg);
-        if (k === 'p1') state.matchStats.dmgTaken += p.burnDmg;
-        else state.matchStats.dmgDealt += p.burnDmg;
+        if (k === 'p1') state.matchStats.dmgTaken += p.burnDmg; else state.matchStats.dmgDealt += p.burnDmg;
         pushEffect({ type: 'burnTick', who: p, life: 14 });
       }
       p.burn = Math.max(0, p.burn - dt);
@@ -788,9 +926,12 @@ function render() {
   else if (scene === 'difficulty') drawDifficulty();
   else if (scene === 'battle') drawBattleScene();
   else if (scene === 'result') drawResult();
+  else if (scene === 'gacha') drawGacha();
+  else if (scene === 'gachaPull') drawGachaPull();
+  else if (scene === 'gachaResult') drawGachaResult();
+  else if (scene === 'inventory') drawInventory();
+  else if (scene === 'probability') drawProbability();
 }
-
-// Background — used by all scenes
 function drawBackground() {
   const bg = ctx.createLinearGradient(0, 0, 0, 640);
   bg.addColorStop(0, '#04060f'); bg.addColorStop(0.5, '#08081a'); bg.addColorStop(1, '#0a0420');
@@ -809,43 +950,58 @@ function drawBackground() {
   }
 }
 
-// ─── MENU ───
-function drawMenu() {
-  // Title
-  ctx.font = 'bold 80px monospace'; ctx.textAlign = 'center';
-  ctx.fillStyle = '#7df9ff'; ctx.shadowColor = '#7df9ff'; ctx.shadowBlur = 30;
-  ctx.fillText('GLYPH', 480, 160);
-  ctx.fillStyle = '#ff44dd'; ctx.shadowColor = '#ff44dd';
-  ctx.fillText('DUEL', 480, 240);
-  ctx.shadowBlur = 0;
-  ctx.font = '14px monospace'; ctx.fillStyle = '#888';
-  ctx.fillText('— サイバー・ネオン 描画 デュエル —', 480, 280);
-  // Stats
-  const ls = save.lifetime;
-  ctx.font = 'bold 12px monospace'; ctx.fillStyle = '#7df9ff';
-  ctx.fillText(`MATCHES ${ls.matches}  ·  WINS ${ls.wins}  ·  LOSSES ${ls.losses}  ·  BEST ${Math.round(ls.bestScore * 100)}%`, 480, 320);
-  // Battle button (large)
-  drawButton(380, 360, 200, 60, 'BATTLE', inRect({ x: pointerX, y: pointerY }, 380, 360, 200, 60), '#7df9ff');
-  // Sub-buttons
-  drawButton(280, 440, 180, 50, 'DECK · ' + save.deck.length + '/8', inRect({ x: pointerX, y: pointerY }, 280, 440, 180, 50), '#88ff88');
-  drawButton(500, 440, 180, 50, save.difficulty.toUpperCase(), inRect({ x: pointerX, y: pointerY }, 500, 440, 180, 50), '#ffdd44');
-  // Footer
-  ctx.font = '10px monospace'; ctx.fillStyle = '#444';
-  ctx.fillText('PHASE 1A · SPRINT 1-A1 → 1-A5 · 30 GLYPHS · 3-LAYER SYNERGY · 3 AI TIERS', 480, 600);
+// ─── COMMON ───
+function drawCoinHUD(x, y, align) {
+  ctx.font = 'bold 14px monospace'; ctx.textAlign = align || 'right'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#f5b700'; ctx.shadowColor = '#f5b700'; ctx.shadowBlur = 10;
+  ctx.fillText('◆ ' + save.currency.coins, x, y);
+  ctx.shadowBlur = 0; ctx.textBaseline = 'alphabetic';
 }
-function drawButton(x, y, w, h, label, hover, color) {
+function drawButton(x, y, w, h, label, hover, color, disabled) {
   ctx.save();
-  ctx.fillStyle = hover ? 'rgba(20,30,50,0.9)' : 'rgba(10,15,25,0.7)';
+  ctx.fillStyle = disabled ? 'rgba(20,20,30,0.4)' : (hover ? 'rgba(20,30,50,0.9)' : 'rgba(10,15,25,0.7)');
   ctx.fillRect(x, y, w, h);
-  ctx.strokeStyle = color; ctx.lineWidth = hover ? 3 : 1.5;
-  ctx.shadowColor = color; ctx.shadowBlur = hover ? 16 : 6;
+  ctx.strokeStyle = disabled ? '#333' : color; ctx.lineWidth = (hover && !disabled) ? 3 : 1.5;
+  ctx.shadowColor = disabled ? 'transparent' : color; ctx.shadowBlur = (hover && !disabled) ? 16 : 6;
   ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
   ctx.shadowBlur = 0;
-  ctx.font = 'bold ' + Math.min(28, h - 22) + 'px monospace';
-  ctx.fillStyle = hover ? '#fff' : color; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = 'bold ' + Math.min(20, h - 18) + 'px monospace';
+  ctx.fillStyle = disabled ? '#555' : (hover ? '#fff' : color); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillText(label, x + w / 2, y + h / 2);
   ctx.textBaseline = 'alphabetic';
   ctx.restore();
+}
+
+// ─── MENU ───
+function drawMenu() {
+  // Coin display top-right
+  drawCoinHUD(940, 28);
+  // Title
+  ctx.font = 'bold 80px monospace'; ctx.textAlign = 'center';
+  ctx.fillStyle = '#7df9ff'; ctx.shadowColor = '#7df9ff'; ctx.shadowBlur = 30;
+  ctx.fillText('GLYPH', 480, 130);
+  ctx.fillStyle = '#ff44dd'; ctx.shadowColor = '#ff44dd';
+  ctx.fillText('DUEL', 480, 210);
+  ctx.shadowBlur = 0;
+  ctx.font = '14px monospace'; ctx.fillStyle = '#888';
+  ctx.fillText('— サイバー・ネオン 描画 デュエル —', 480, 250);
+  // Stats
+  const ls = save.lifetime;
+  ctx.font = 'bold 12px monospace'; ctx.fillStyle = '#7df9ff';
+  ctx.fillText(`MATCHES ${ls.matches}  ·  WINS ${ls.wins}  ·  LOSSES ${ls.losses}  ·  BEST ${Math.round(ls.bestScore * 100)}%`, 480, 282);
+  // Battle (large)
+  drawButton(380, 320, 200, 60, 'BATTLE', inRect({ x: pointerX, y: pointerY }, 380, 320, 200, 60), '#7df9ff');
+  // Sub-buttons row (4 buttons)
+  drawButton(100, 410, 180, 50, 'DECK · ' + save.deck.length, inRect({ x: pointerX, y: pointerY }, 100, 410, 180, 50), '#88ff88');
+  drawButton(290, 410, 180, 50, save.difficulty.toUpperCase(), inRect({ x: pointerX, y: pointerY }, 290, 410, 180, 50), '#ffdd44');
+  drawButton(480, 410, 180, 50, 'GACHA', inRect({ x: pointerX, y: pointerY }, 480, 410, 180, 50), '#f5b700');
+  drawButton(670, 410, 200, 50, 'INVENTORY', inRect({ x: pointerX, y: pointerY }, 670, 410, 200, 50), '#aa66ff');
+  // Inventory progress
+  ctx.font = '11px monospace'; ctx.fillStyle = '#666'; ctx.textAlign = 'center';
+  ctx.fillText(`SKINS ${save.inventory.skins.length}/${SKIN_POOL.length}  ·  GLYPHS ${save.inventory.glyphs.length}/${G_ORDER.length}`, 480, 490);
+  // Footer
+  ctx.font = '10px monospace'; ctx.fillStyle = '#444';
+  ctx.fillText('PHASE 1A + 1C · 30 GLYPHS · 10 SKINS · 90-PITY GACHA · 3 AI TIERS', 480, 600);
 }
 
 // ─── DECK BUILDER ───
@@ -854,50 +1010,47 @@ function drawDeckBuilder() {
   ctx.fillStyle = '#7df9ff'; ctx.shadowColor = '#7df9ff'; ctx.shadowBlur = 14;
   ctx.fillText('DECK · ' + deckEditing.length + ' / 8', 480, 32); ctx.shadowBlur = 0;
   ctx.font = '11px monospace'; ctx.fillStyle = '#666';
-  ctx.fillText('CLICK GLYPHS TO TOGGLE · 8 EXACTLY TO SAVE', 480, 50);
+  ctx.fillText('CLICK OWNED GLYPHS · 1-8 ITEMS · LOCKED = NEED TO GACHA', 480, 50);
   const cols = 6, cellW = 145, cellH = 92, startX = (960 - cols * cellW) / 2, startY = 70;
   for (let i = 0; i < G_ORDER.length; i++) {
     const id = G_ORDER[i], g = G[id];
     const cx = startX + (i % cols) * cellW, cy = startY + Math.floor(i / cols) * cellH;
+    const owned = save.inventory.glyphs.includes(id);
     const selected = deckEditing.includes(id);
     const hover = inRect({ x: pointerX, y: pointerY }, cx + 2, cy + 2, cellW - 4, cellH - 4);
-    ctx.fillStyle = selected ? 'rgba(40,60,80,0.9)' : 'rgba(20,20,30,0.8)';
+    ctx.fillStyle = !owned ? 'rgba(10,10,15,0.85)' : selected ? 'rgba(40,60,80,0.9)' : 'rgba(20,20,30,0.8)';
     ctx.fillRect(cx + 2, cy + 2, cellW - 4, cellH - 4);
-    ctx.strokeStyle = selected ? '#7df9ff' : (hover ? '#aaa' : g.color);
+    ctx.strokeStyle = !owned ? '#333' : (selected ? '#7df9ff' : (hover ? '#aaa' : g.color));
     ctx.lineWidth = selected ? 3 : (hover ? 2 : 1);
     ctx.shadowColor = selected ? '#7df9ff' : 'transparent';
     ctx.shadowBlur = selected ? 10 : 0;
     ctx.strokeRect(cx + 2.5, cy + 2.5, cellW - 5, cellH - 5);
     ctx.shadowBlur = 0;
-    // Selected check
+    if (!owned) { ctx.font = 'bold 24px monospace'; ctx.textAlign = 'center'; ctx.fillStyle = '#666'; ctx.fillText('🔒', cx + cellW/2, cy + 50); continue; }
     if (selected) {
       const ord = deckEditing.indexOf(id) + 1;
       ctx.fillStyle = '#7df9ff'; ctx.font = 'bold 12px monospace'; ctx.textAlign = 'right';
       ctx.fillText('★' + ord, cx + cellW - 8, cy + 16);
     }
-    // Mini icon
     ctx.save(); ctx.translate(cx + 22, cy + 26);
-    ctx.strokeStyle = g.color; ctx.lineWidth = 1.6;
-    ctx.shadowColor = g.color; ctx.shadowBlur = 5;
+    ctx.strokeStyle = g.color; ctx.lineWidth = 1.6; ctx.shadowColor = g.color; ctx.shadowBlur = 5;
     drawGlyphIcon(g.shape, 14);
     ctx.restore();
-    // Text
     ctx.textAlign = 'left';
     ctx.fillStyle = '#fff'; ctx.font = 'bold 12px monospace';
     ctx.fillText(g.ja, cx + 44, cy + 22);
     ctx.fillStyle = CAT_COLOR[g.cat]; ctx.font = '8px monospace';
-    ctx.fillText(CAT_LABEL_JA[g.cat] + ' · ' + g.syn.toUpperCase(), cx + 8, cy + 50);
+    ctx.fillText(CAT_LABEL_JA[g.cat] + ' · ' + g.syn.toUpperCase() + ' · ' + g.rarity, cx + 8, cy + 50);
     ctx.fillStyle = '#ccc'; ctx.font = '8px monospace';
     const desc = g.desc.length > 30 ? g.desc.slice(0, 30) + '…' : g.desc;
     ctx.fillText(desc, cx + 8, cy + 64);
     ctx.fillStyle = g.color; ctx.font = 'bold 9px monospace';
     ctx.fillText('M ' + g.mana + (g.dmg ? '  D ' + g.dmg : ''), cx + 8, cy + 80);
   }
-  // Footer buttons
   drawButton(40, 580, 200, 40, 'BACK', inRect({ x: pointerX, y: pointerY }, 40, 580, 200, 40), '#888');
-  drawButton(380, 580, 200, 40, 'DEFAULT DECK', inRect({ x: pointerX, y: pointerY }, 380, 580, 200, 40), '#ffdd44');
-  const canSave = deckEditing.length === 8;
-  drawButton(720, 580, 200, 40, canSave ? 'SAVE & BACK' : 'NEED ' + (8 - deckEditing.length), inRect({ x: pointerX, y: pointerY }, 720, 580, 200, 40), canSave ? '#88ff88' : '#666');
+  drawButton(380, 580, 200, 40, 'AUTO FILL', inRect({ x: pointerX, y: pointerY }, 380, 580, 200, 40), '#ffdd44');
+  const canSave = deckEditing.length >= 1 && deckEditing.length <= 8;
+  drawButton(720, 580, 200, 40, canSave ? 'SAVE & BACK' : 'PICK 1-8', inRect({ x: pointerX, y: pointerY }, 720, 580, 200, 40), canSave ? '#88ff88' : '#666', !canSave);
 }
 
 // ─── DIFFICULTY ───
@@ -913,7 +1066,7 @@ function drawDifficulty() {
     { id: 'hard',   x: 680, color: '#ff4488', label: 'HARD',   sub: 'all 30 · synergy aware · 80-98% acc' },
   ];
   for (const o of opts) {
-    const cx = o.x, cy = 280, w = 160, h = 100;
+    const cx = o.x, cy = 280;
     const hover = inRect({ x: pointerX, y: pointerY }, cx - 80, cy, 160, 100);
     const selected = save.difficulty === o.id;
     ctx.fillStyle = selected ? 'rgba(50,70,90,0.9)' : (hover ? 'rgba(30,40,60,0.9)' : 'rgba(20,20,30,0.7)');
@@ -936,7 +1089,7 @@ function drawBattleScene() {
   const sx = state.shakeFrames > 0 ? (Math.random() - 0.5) * state.shakeAmp : 0;
   const sy = state.shakeFrames > 0 ? (Math.random() - 0.5) * state.shakeAmp : 0;
   ctx.save(); ctx.translate(sx, sy);
-  drawMage(state.p1, '#7df9ff', false);
+  drawMage(state.p1, getEquippedSkinAccent(), false);
   drawMage(state.ai, '#ff44dd', true);
   drawStatusAuras(state.p1);
   drawStatusAuras(state.ai);
@@ -944,13 +1097,14 @@ function drawBattleScene() {
   drawTraps(state.ai);
   for (const pr of state.projectiles) drawProjectile(pr);
   for (const ef of state.effects) drawEffect(ef);
-  if (state.drawTrail && state.drawTrail.length >= 2) drawTrail(state.drawTrail, '#7df9ff');
+  if (state.drawTrail && state.drawTrail.length >= 2) drawTrail(state.drawTrail, getEquippedSkinAccent());
   drawBattleHUD();
   if (state.scoreFeedback) drawScoreFeedback(state.scoreFeedback);
   if (state.suddenDeath) drawSuddenDeathBanner();
   if (state.flashAlpha > 0.01) { ctx.fillStyle = `rgba(255,255,255,${state.flashAlpha})`; ctx.fillRect(0, 0, 960, 640); }
   ctx.restore();
 }
+function getEquippedSkinAccent() { const s = SKIN_POOL.find(k => k.id === save.equippedSkin); return s ? s.accent : '#7df9ff'; }
 function drawSuddenDeathBanner() {
   const a = 0.7 + Math.sin(state.bgPulse * 8) * 0.3;
   ctx.save();
@@ -1015,53 +1169,13 @@ function drawStatusBadges(p) {
   }
 }
 function drawStatusAuras(p) {
-  if (p.barrier > 0) {
-    ctx.strokeStyle = '#88ff88'; ctx.lineWidth = 2; ctx.shadowColor = '#88ff88'; ctx.shadowBlur = 14;
-    ctx.globalAlpha = 0.3 + 0.2 * Math.sin(state.bgPulse * 8);
-    ctx.beginPath(); ctx.arc(p.x, p.y - 40, 50, 0, Math.PI * 2); ctx.stroke();
-    ctx.globalAlpha = 1; ctx.shadowBlur = 0;
-  }
-  if (p.parry > 0) {
-    ctx.strokeStyle = '#ffdd44'; ctx.lineWidth = 3; ctx.shadowColor = '#ffdd44'; ctx.shadowBlur = 20; ctx.globalAlpha = 0.6;
-    ctx.beginPath(); ctx.arc(p.x, p.y - 40, 38 + Math.sin(state.bgPulse * 12) * 3, 0, Math.PI * 2); ctx.stroke();
-    ctx.globalAlpha = 1; ctx.shadowBlur = 0;
-  }
-  if (p.invuln > 0) {
-    ctx.strokeStyle = '#ffff00'; ctx.lineWidth = 4; ctx.shadowColor = '#ffff00'; ctx.shadowBlur = 30; ctx.globalAlpha = 0.5;
-    ctx.beginPath(); ctx.arc(p.x, p.y - 40, 60, 0, Math.PI * 2); ctx.stroke();
-    ctx.globalAlpha = 1; ctx.shadowBlur = 0;
-  }
-  if (p.reflectNext > 0) {
-    ctx.strokeStyle = '#aaffaa'; ctx.lineWidth = 2; ctx.setLineDash([6, 4]);
-    ctx.shadowColor = '#aaffaa'; ctx.shadowBlur = 12; ctx.globalAlpha = 0.6;
-    ctx.beginPath(); ctx.arc(p.x, p.y - 40, 55, 0, Math.PI * 2); ctx.stroke();
-    ctx.setLineDash([]); ctx.globalAlpha = 1; ctx.shadowBlur = 0;
-  }
-  if (p.fastMana > 0) {
-    ctx.fillStyle = '#88ffaa'; ctx.shadowColor = '#88ffaa'; ctx.shadowBlur = 10;
-    for (let i = 0; i < 4; i++) {
-      const a = (i / 4 + state.bgPulse * 0.5) * Math.PI * 2;
-      ctx.globalAlpha = 0.5;
-      ctx.beginPath(); ctx.arc(p.x + Math.cos(a) * 50, p.y - 30 + Math.sin(a) * 20, 3, 0, Math.PI * 2); ctx.fill();
-    }
-    ctx.globalAlpha = 1; ctx.shadowBlur = 0;
-  }
-  if (p.burn > 0) {
-    ctx.fillStyle = '#ff4422'; ctx.shadowColor = '#ff4422'; ctx.shadowBlur = 12;
-    for (let i = 0; i < 5; i++) {
-      const o = i + state.bgPulse * 4;
-      ctx.globalAlpha = 0.4;
-      ctx.beginPath(); ctx.arc(p.x + Math.sin(o * 1.3) * 18, p.y - 20 - (o % 1) * 30, 4, 0, Math.PI * 2); ctx.fill();
-    }
-    ctx.globalAlpha = 1; ctx.shadowBlur = 0;
-  }
-  if (p.stun > 0) {
-    ctx.strokeStyle = '#88ddff'; ctx.lineWidth = 2;
-    for (let i = 0; i < 3; i++) {
-      const a = state.bgPulse * 6 + (i / 3) * Math.PI * 2;
-      ctx.beginPath(); ctx.arc(p.x + Math.cos(a) * 18, p.y - 95, 4, 0, Math.PI * 2); ctx.stroke();
-    }
-  }
+  if (p.barrier > 0) { ctx.strokeStyle = '#88ff88'; ctx.lineWidth = 2; ctx.shadowColor = '#88ff88'; ctx.shadowBlur = 14; ctx.globalAlpha = 0.3 + 0.2 * Math.sin(state.bgPulse * 8); ctx.beginPath(); ctx.arc(p.x, p.y - 40, 50, 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = 1; ctx.shadowBlur = 0; }
+  if (p.parry > 0) { ctx.strokeStyle = '#ffdd44'; ctx.lineWidth = 3; ctx.shadowColor = '#ffdd44'; ctx.shadowBlur = 20; ctx.globalAlpha = 0.6; ctx.beginPath(); ctx.arc(p.x, p.y - 40, 38 + Math.sin(state.bgPulse * 12) * 3, 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = 1; ctx.shadowBlur = 0; }
+  if (p.invuln > 0) { ctx.strokeStyle = '#ffff00'; ctx.lineWidth = 4; ctx.shadowColor = '#ffff00'; ctx.shadowBlur = 30; ctx.globalAlpha = 0.5; ctx.beginPath(); ctx.arc(p.x, p.y - 40, 60, 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = 1; ctx.shadowBlur = 0; }
+  if (p.reflectNext > 0) { ctx.strokeStyle = '#aaffaa'; ctx.lineWidth = 2; ctx.setLineDash([6, 4]); ctx.shadowColor = '#aaffaa'; ctx.shadowBlur = 12; ctx.globalAlpha = 0.6; ctx.beginPath(); ctx.arc(p.x, p.y - 40, 55, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1; ctx.shadowBlur = 0; }
+  if (p.fastMana > 0) { ctx.fillStyle = '#88ffaa'; ctx.shadowColor = '#88ffaa'; ctx.shadowBlur = 10; for (let i = 0; i < 4; i++) { const a = (i / 4 + state.bgPulse * 0.5) * Math.PI * 2; ctx.globalAlpha = 0.5; ctx.beginPath(); ctx.arc(p.x + Math.cos(a) * 50, p.y - 30 + Math.sin(a) * 20, 3, 0, Math.PI * 2); ctx.fill(); } ctx.globalAlpha = 1; ctx.shadowBlur = 0; }
+  if (p.burn > 0) { ctx.fillStyle = '#ff4422'; ctx.shadowColor = '#ff4422'; ctx.shadowBlur = 12; for (let i = 0; i < 5; i++) { const o = i + state.bgPulse * 4; ctx.globalAlpha = 0.4; ctx.beginPath(); ctx.arc(p.x + Math.sin(o * 1.3) * 18, p.y - 20 - (o % 1) * 30, 4, 0, Math.PI * 2); ctx.fill(); } ctx.globalAlpha = 1; ctx.shadowBlur = 0; }
+  if (p.stun > 0) { ctx.strokeStyle = '#88ddff'; ctx.lineWidth = 2; for (let i = 0; i < 3; i++) { const a = state.bgPulse * 6 + (i / 3) * Math.PI * 2; ctx.beginPath(); ctx.arc(p.x + Math.cos(a) * 18, p.y - 95, 4, 0, Math.PI * 2); ctx.stroke(); } }
 }
 function drawTraps(p) {
   if (p.traps <= 0) return;
@@ -1069,11 +1183,8 @@ function drawTraps(p) {
     const tx = p.x + (p.side === 'left' ? 60 + i * 30 : -60 - i * 30);
     const ty = 535;
     ctx.save();
-    ctx.strokeStyle = '#ffaa00'; ctx.lineWidth = 2;
-    ctx.shadowColor = '#ffaa00'; ctx.shadowBlur = 10;
-    ctx.globalAlpha = 0.6 + Math.sin(state.bgPulse * 6 + i) * 0.3;
-    ctx.beginPath();
-    ctx.moveTo(tx - 10, ty - 10); ctx.lineTo(tx + 10, ty + 10);
+    ctx.strokeStyle = '#ffaa00'; ctx.lineWidth = 2; ctx.shadowColor = '#ffaa00'; ctx.shadowBlur = 10; ctx.globalAlpha = 0.6 + Math.sin(state.bgPulse * 6 + i) * 0.3;
+    ctx.beginPath(); ctx.moveTo(tx - 10, ty - 10); ctx.lineTo(tx + 10, ty + 10);
     ctx.moveTo(tx + 10, ty - 10); ctx.lineTo(tx - 10, ty + 10);
     ctx.stroke();
     ctx.restore();
@@ -1084,8 +1195,7 @@ function drawProjectile(pr) {
   let y = pr.y + (pr.ty - pr.y) * k;
   if (pr.kind === 'fireball') y -= Math.sin(k * Math.PI) * 60;
   ctx.save();
-  ctx.shadowColor = pr.color; ctx.shadowBlur = 24;
-  ctx.fillStyle = pr.color;
+  ctx.shadowColor = pr.color; ctx.shadowBlur = 24; ctx.fillStyle = pr.color;
   const size = pr.kind === 'icicle' ? 6 : pr.kind === 'windblade' ? 14 : 12;
   ctx.beginPath(); ctx.arc(x, y, size + Math.sin(state.bgPulse * 30) * 2, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = '#fff'; ctx.globalAlpha = 0.7;
@@ -1102,9 +1212,7 @@ function drawEffect(ef) {
     ctx.beginPath(); ctx.moveTo(c.x, c.y - 40);
     const segs = 6;
     for (let i = 1; i <= segs; i++) {
-      const t = i / segs;
-      const x = c.x + (d.x - c.x) * t + (Math.random() - 0.5) * 24;
-      const y = (c.y - 40) + ((d.y - 30) - (c.y - 40)) * t + (Math.random() - 0.5) * 24;
+      const t = i / segs; const x = c.x + (d.x - c.x) * t + (Math.random() - 0.5) * 24; const y = (c.y - 40) + ((d.y - 30) - (c.y - 40)) * t + (Math.random() - 0.5) * 24;
       ctx.lineTo(x, y);
     }
     ctx.stroke();
@@ -1123,10 +1231,7 @@ function drawEffect(ef) {
     ctx.shadowColor = ef.color; ctx.shadowBlur = 30; ctx.globalAlpha = a;
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     ctx.beginPath(); ctx.moveTo(c.x, c.y - 40);
-    for (let i = 1; i <= 8; i++) {
-      const t = i / 8, x = c.x + (d.x - c.x) * t + (Math.random() - 0.5) * 18, y = (c.y - 40) + ((d.y - 30) - (c.y - 40)) * t + (Math.random() - 0.5) * 18;
-      ctx.lineTo(x, y);
-    }
+    for (let i = 1; i <= 8; i++) { const t = i / 8, x = c.x + (d.x - c.x) * t + (Math.random() - 0.5) * 18, y = (c.y - 40) + ((d.y - 30) - (c.y - 40)) * t + (Math.random() - 0.5) * 18; ctx.lineTo(x, y); }
     ctx.stroke();
   } else if (ef.type === 'megaBoom') {
     const a = ef.life / 36, r = (1 - a) * 120;
@@ -1177,17 +1282,7 @@ function drawEffect(ef) {
     ctx.beginPath(); ctx.arc(ef.who.x, ef.who.y - 40, 50, 0, Math.PI * 2); ctx.stroke();
   } else if (['barrierStart', 'parryStart', 'reflectStart', 'invulnStart', 'mirrorStart', 'powerStart', 'resAura', 'sigilAura', 'cleanseAura', 'windAura', 'slowAura', 'vengeanceStart'].includes(ef.type)) {
     const a = ef.life / (ef.type === 'sigilAura' ? 60 : 30);
-    const col = ef.type === 'barrierStart' ? '#88ff88' :
-      ef.type === 'parryStart' ? '#ffdd44' :
-      ef.type === 'reflectStart' ? '#aaffaa' :
-      ef.type === 'invulnStart' ? '#ffff00' :
-      ef.type === 'mirrorStart' ? '#dddddd' :
-      ef.type === 'powerStart' ? '#ff8844' :
-      ef.type === 'resAura' ? '#ffeeaa' :
-      ef.type === 'sigilAura' ? '#ffaa44' :
-      ef.type === 'cleanseAura' ? '#ddffdd' :
-      ef.type === 'windAura' ? '#88ffaa' :
-      ef.type === 'slowAura' ? '#88aaff' : '#ff0044';
+    const col = ef.type === 'barrierStart' ? '#88ff88' : ef.type === 'parryStart' ? '#ffdd44' : ef.type === 'reflectStart' ? '#aaffaa' : ef.type === 'invulnStart' ? '#ffff00' : ef.type === 'mirrorStart' ? '#dddddd' : ef.type === 'powerStart' ? '#ff8844' : ef.type === 'resAura' ? '#ffeeaa' : ef.type === 'sigilAura' ? '#ffaa44' : ef.type === 'cleanseAura' ? '#ddffdd' : ef.type === 'windAura' ? '#88ffaa' : ef.type === 'slowAura' ? '#88aaff' : '#ff0044';
     ctx.strokeStyle = col; ctx.lineWidth = 2;
     ctx.shadowColor = col; ctx.shadowBlur = 18; ctx.globalAlpha = a;
     ctx.beginPath(); ctx.arc(ef.who.x, ef.who.y - 40, 50 + (1 - a) * 30, 0, Math.PI * 2); ctx.stroke();
@@ -1247,15 +1342,14 @@ function drawBattleHUD() {
   ctx.shadowBlur = 0;
   ctx.font = '10px monospace'; ctx.fillStyle = '#566';
   ctx.fillText(state.suddenDeath ? 'SUDDEN DEATH' : 'TIME', 480, 64);
-  // Deck strip (bottom)
   drawDeckStrip();
 }
 function drawDeckStrip() {
-  const ids = save.deck;
+  const ids = save.deck.length > 0 ? save.deck : save.inventory.glyphs.slice(0, 8);
+  if (ids.length === 0) return;
   const w = 90, gap = 8, total = ids.length * w + (ids.length - 1) * gap;
   let x = (960 - total) / 2;
   const y = 580;
-  ctx.font = '9px monospace';
   for (const id of ids) {
     const g = G[id];
     if (!g) { x += w + gap; continue; }
@@ -1311,89 +1405,520 @@ function drawScoreFeedback(sf) {
 function drawGlyphIcon(shape, s) {
   ctx.beginPath();
   switch (shape) {
-    case 'zigzag':      ctx.moveTo(-s, -s/2); ctx.lineTo(-s/3, s/3); ctx.lineTo(s/3, -s/3); ctx.lineTo(s, s/2); ctx.stroke(); break;
-    case 'circle':      ctx.arc(0, 0, s * 0.85, 0, Math.PI * 2); ctx.stroke(); break;
-    case 'triangle':    ctx.moveTo(0, -s); ctx.lineTo(s, s * 0.7); ctx.lineTo(-s, s * 0.7); ctx.closePath(); ctx.stroke(); break;
+    case 'zigzag': ctx.moveTo(-s, -s/2); ctx.lineTo(-s/3, s/3); ctx.lineTo(s/3, -s/3); ctx.lineTo(s, s/2); ctx.stroke(); break;
+    case 'circle': ctx.arc(0, 0, s * 0.85, 0, Math.PI * 2); ctx.stroke(); break;
+    case 'triangle': ctx.moveTo(0, -s); ctx.lineTo(s, s * 0.7); ctx.lineTo(-s, s * 0.7); ctx.closePath(); ctx.stroke(); break;
     case 'invTriangle': ctx.moveTo(0, s); ctx.lineTo(s, -s * 0.7); ctx.lineTo(-s, -s * 0.7); ctx.closePath(); ctx.stroke(); break;
-    case 'check':       ctx.moveTo(-s, 0); ctx.lineTo(-s/4, s/2); ctx.lineTo(s, -s); ctx.stroke(); break;
-    case 'rect':        ctx.rect(-s, -s * 0.7, 2 * s, 1.4 * s); ctx.stroke(); break;
-    case 'v':           ctx.moveTo(-s, -s/2); ctx.lineTo(0, s); ctx.lineTo(s, -s/2); ctx.stroke(); break;
-    case 'crescent':    ctx.arc(0, 0, s, Math.PI * 0.2, Math.PI * 0.8); ctx.stroke(); break;
-    case 'twoLines':    ctx.moveTo(-s, -s/3); ctx.lineTo(s, -s/3); ctx.moveTo(s, s/3); ctx.lineTo(-s, s/3); ctx.stroke(); break;
-    case 'spiral':      for (let i = 0; i <= 25; i++) { const a = i * 0.4, r = (i / 25) * s; if (i === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r); else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); } ctx.stroke(); break;
-    case 'spiralOut':   for (let i = 0; i <= 25; i++) { const a = i * 0.5, r = 2 + (i / 25) * s; if (i === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r); else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); } ctx.stroke(); break;
-    case 'grid':        ctx.moveTo(-s, -s); ctx.lineTo(s, -s); ctx.lineTo(s, 0); ctx.lineTo(-s, 0); ctx.lineTo(-s, s); ctx.lineTo(s, s); ctx.stroke(); break;
-    case 'longWave':    ctx.moveTo(-s, 0); for (let i = 1; i <= 6; i++) ctx.lineTo(-s + (i / 6) * 2 * s, ((i % 2) - 0.5) * s); ctx.stroke(); break;
-    case 'x':           ctx.moveTo(-s, -s); ctx.lineTo(s, s); ctx.moveTo(s, -s); ctx.lineTo(-s, s); ctx.stroke(); break;
-    case 'doubleTri':   ctx.moveTo(-s, s); ctx.lineTo(-s/2, -s); ctx.lineTo(0, s); ctx.lineTo(s/2, -s); ctx.lineTo(s, s); ctx.stroke(); break;
-    case 'wave':        ctx.moveTo(-s, 0); for (let i = 1; i <= 4; i++) ctx.lineTo(-s + (i / 4) * 2 * s, Math.sin(i * Math.PI / 2) * s * 0.6); ctx.stroke(); break;
-    case 'figure8':     for (let i = 0; i <= 30; i++) { const t = (i / 30) * Math.PI * 2; const x = Math.cos(t) * s; const y = Math.sin(t * 2) * s * 0.5; if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); } ctx.stroke(); break;
-    case 'star':        for (let i = 0; i <= 10; i++) { const a = (i / 10) * Math.PI * 2 - Math.PI / 2, r = i % 2 === 0 ? s : s * 0.4; if (i === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r); else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); } ctx.stroke(); break;
-    case 'arrow':       ctx.moveTo(s, 0); ctx.lineTo(-s, 0); ctx.moveTo(-s, 0); ctx.lineTo(-s/2, -s/2); ctx.moveTo(-s, 0); ctx.lineTo(-s/2, s/2); ctx.stroke(); break;
-    case 'upTriangle':  ctx.moveTo(0, -s); ctx.lineTo(s, s/2); ctx.lineTo(-s, s/2); ctx.closePath(); ctx.stroke(); break;
-    case 'dot':         ctx.arc(0, 0, 3, 0, Math.PI * 2); ctx.fill(); break;
-    case 'shortWave':   ctx.moveTo(-s, 0); ctx.quadraticCurveTo(-s/2, -s, 0, 0); ctx.quadraticCurveTo(s/2, s, s, 0); ctx.stroke(); break;
-    case 'clock':       ctx.arc(0, 0, s * 0.7, 0, Math.PI * 2); ctx.moveTo(0, 0); ctx.lineTo(s * 0.5, 0); ctx.stroke(); break;
-    case 'narrowZ':     ctx.moveTo(-s/2, -s); ctx.lineTo(s/2, -s); ctx.lineTo(-s/2, s); ctx.lineTo(s/2, s); ctx.stroke(); break;
-    case 'xMark':       ctx.moveTo(-s/2, -s/2); ctx.lineTo(s/2, s/2); ctx.moveTo(-s/2, s/2); ctx.lineTo(s/2, -s/2); ctx.stroke(); break;
-    case 'shortLine':   ctx.moveTo(-s/2, 0); ctx.lineTo(s/2, 0); ctx.stroke(); break;
-    case 'pentagon':    for (let i = 0; i <= 5; i++) { const a = (i / 5) * Math.PI * 2 - Math.PI / 2; if (i === 0) ctx.moveTo(Math.cos(a) * s, Math.sin(a) * s); else ctx.lineTo(Math.cos(a) * s, Math.sin(a) * s); } ctx.stroke(); break;
-    case 'whirl':       for (let i = 0; i <= 25; i++) { const a = i * 0.6, r = s - (i / 25) * s; if (i === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r); else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); } ctx.stroke(); break;
-    case 'omega':       ctx.moveTo(-s, s); ctx.lineTo(-s/2, -s/2); ctx.lineTo(s/2, -s/2); ctx.lineTo(s, s); ctx.stroke(); break;
-    case 'teardrop':    ctx.moveTo(0, -s); ctx.bezierCurveTo(s, 0, s/2, s, 0, s); ctx.bezierCurveTo(-s/2, s, -s, 0, 0, -s); ctx.stroke(); break;
-    default:            ctx.arc(0, 0, s * 0.5, 0, Math.PI * 2); ctx.stroke();
+    case 'check': ctx.moveTo(-s, 0); ctx.lineTo(-s/4, s/2); ctx.lineTo(s, -s); ctx.stroke(); break;
+    case 'rect': ctx.rect(-s, -s * 0.7, 2 * s, 1.4 * s); ctx.stroke(); break;
+    case 'v': ctx.moveTo(-s, -s/2); ctx.lineTo(0, s); ctx.lineTo(s, -s/2); ctx.stroke(); break;
+    case 'crescent': ctx.arc(0, 0, s, Math.PI * 0.2, Math.PI * 0.8); ctx.stroke(); break;
+    case 'twoLines': ctx.moveTo(-s, -s/3); ctx.lineTo(s, -s/3); ctx.moveTo(s, s/3); ctx.lineTo(-s, s/3); ctx.stroke(); break;
+    case 'spiral': for (let i = 0; i <= 25; i++) { const a = i * 0.4, r = (i / 25) * s; if (i === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r); else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); } ctx.stroke(); break;
+    case 'spiralOut': for (let i = 0; i <= 25; i++) { const a = i * 0.5, r = 2 + (i / 25) * s; if (i === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r); else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); } ctx.stroke(); break;
+    case 'grid': ctx.moveTo(-s, -s); ctx.lineTo(s, -s); ctx.lineTo(s, 0); ctx.lineTo(-s, 0); ctx.lineTo(-s, s); ctx.lineTo(s, s); ctx.stroke(); break;
+    case 'longWave': ctx.moveTo(-s, 0); for (let i = 1; i <= 6; i++) ctx.lineTo(-s + (i / 6) * 2 * s, ((i % 2) - 0.5) * s); ctx.stroke(); break;
+    case 'x': ctx.moveTo(-s, -s); ctx.lineTo(s, s); ctx.moveTo(s, -s); ctx.lineTo(-s, s); ctx.stroke(); break;
+    case 'doubleTri': ctx.moveTo(-s, s); ctx.lineTo(-s/2, -s); ctx.lineTo(0, s); ctx.lineTo(s/2, -s); ctx.lineTo(s, s); ctx.stroke(); break;
+    case 'wave': ctx.moveTo(-s, 0); for (let i = 1; i <= 4; i++) ctx.lineTo(-s + (i / 4) * 2 * s, Math.sin(i * Math.PI / 2) * s * 0.6); ctx.stroke(); break;
+    case 'figure8': for (let i = 0; i <= 30; i++) { const t = (i / 30) * Math.PI * 2; const x = Math.cos(t) * s; const y = Math.sin(t * 2) * s * 0.5; if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); } ctx.stroke(); break;
+    case 'star': for (let i = 0; i <= 10; i++) { const a = (i / 10) * Math.PI * 2 - Math.PI / 2, r = i % 2 === 0 ? s : s * 0.4; if (i === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r); else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); } ctx.stroke(); break;
+    case 'arrow': ctx.moveTo(s, 0); ctx.lineTo(-s, 0); ctx.moveTo(-s, 0); ctx.lineTo(-s/2, -s/2); ctx.moveTo(-s, 0); ctx.lineTo(-s/2, s/2); ctx.stroke(); break;
+    case 'upTriangle': ctx.moveTo(0, -s); ctx.lineTo(s, s/2); ctx.lineTo(-s, s/2); ctx.closePath(); ctx.stroke(); break;
+    case 'dot': ctx.arc(0, 0, 3, 0, Math.PI * 2); ctx.fill(); break;
+    case 'shortWave': ctx.moveTo(-s, 0); ctx.quadraticCurveTo(-s/2, -s, 0, 0); ctx.quadraticCurveTo(s/2, s, s, 0); ctx.stroke(); break;
+    case 'clock': ctx.arc(0, 0, s * 0.7, 0, Math.PI * 2); ctx.moveTo(0, 0); ctx.lineTo(s * 0.5, 0); ctx.stroke(); break;
+    case 'narrowZ': ctx.moveTo(-s/2, -s); ctx.lineTo(s/2, -s); ctx.lineTo(-s/2, s); ctx.lineTo(s/2, s); ctx.stroke(); break;
+    case 'xMark': ctx.moveTo(-s/2, -s/2); ctx.lineTo(s/2, s/2); ctx.moveTo(-s/2, s/2); ctx.lineTo(s/2, -s/2); ctx.stroke(); break;
+    case 'shortLine': ctx.moveTo(-s/2, 0); ctx.lineTo(s/2, 0); ctx.stroke(); break;
+    case 'pentagon': for (let i = 0; i <= 5; i++) { const a = (i / 5) * Math.PI * 2 - Math.PI / 2; if (i === 0) ctx.moveTo(Math.cos(a) * s, Math.sin(a) * s); else ctx.lineTo(Math.cos(a) * s, Math.sin(a) * s); } ctx.stroke(); break;
+    case 'whirl': for (let i = 0; i <= 25; i++) { const a = i * 0.6, r = s - (i / 25) * s; if (i === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r); else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); } ctx.stroke(); break;
+    case 'omega': ctx.moveTo(-s, s); ctx.lineTo(-s/2, -s/2); ctx.lineTo(s/2, -s/2); ctx.lineTo(s, s); ctx.stroke(); break;
+    case 'teardrop': ctx.moveTo(0, -s); ctx.bezierCurveTo(s, 0, s/2, s, 0, s); ctx.bezierCurveTo(-s/2, s, -s, 0, 0, -s); ctx.stroke(); break;
+    default: ctx.arc(0, 0, s * 0.5, 0, Math.PI * 2); ctx.stroke();
   }
 }
 
-// ─── RESULT ───
+// ─── BATTLE RESULT ───
 function drawResult() {
-  // Reuse battle scene rendering as backdrop, dimmed
   ctx.save(); ctx.globalAlpha = 0.4;
-  drawMage(state.p1, '#7df9ff', false);
+  drawMage(state.p1, getEquippedSkinAccent(), false);
   drawMage(state.ai, '#ff44dd', true);
   ctx.restore();
   ctx.fillStyle = 'rgba(0,0,0,0.75)'; ctx.fillRect(0, 0, 960, 640);
-  const won = state.winner === 'p1';
-  const draw = state.winner === 'draw';
-  ctx.font = 'bold 64px monospace'; ctx.textAlign = 'center';
-  ctx.fillStyle = draw ? '#aaa' : (won ? '#7df9ff' : '#ff44dd');
+  drawCoinHUD(940, 28);
+  const won = state.winner === 'p1', drawn = state.winner === 'draw';
+  ctx.font = 'bold 56px monospace'; ctx.textAlign = 'center';
+  ctx.fillStyle = drawn ? '#aaa' : (won ? '#7df9ff' : '#ff44dd');
   ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = 30;
-  ctx.fillText(draw ? 'DRAW' : (won ? 'VICTORY' : 'DEFEAT'), 480, 130);
+  ctx.fillText(drawn ? 'DRAW' : (won ? 'VICTORY' : 'DEFEAT'), 480, 90);
   ctx.shadowBlur = 0;
-  ctx.font = 'bold 18px monospace'; ctx.fillStyle = '#fff';
-  ctx.fillText(`${Math.round(state.p1.hp)} HP   vs   ${Math.round(state.ai.hp)} HP`, 480, 170);
-  // Stats panel
+  ctx.font = 'bold 16px monospace'; ctx.fillStyle = '#fff';
+  ctx.fillText(`${Math.round(state.p1.hp)} HP   vs   ${Math.round(state.ai.hp)} HP`, 480, 124);
+  // Reward display
+  if (state.rewardCoins > 0) {
+    const a = 0.7 + Math.sin(state.bgPulse * 4) * 0.3;
+    ctx.font = 'bold 24px monospace'; ctx.fillStyle = '#f5b700';
+    ctx.shadowColor = '#f5b700'; ctx.shadowBlur = 16; ctx.globalAlpha = a;
+    ctx.fillText('REWARD: +' + state.rewardCoins + ' COINS ◆', 480, 158);
+    ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+  }
+  // Stats
   const ms = state.matchStats;
-  const sx = 200, sy = 220, sw = 560, sh = 240;
+  const sx = 200, sy = 190, sw = 560, sh = 240;
   ctx.fillStyle = 'rgba(20,20,30,0.85)'; ctx.fillRect(sx, sy, sw, sh);
   ctx.strokeStyle = '#7df9ff'; ctx.lineWidth = 1; ctx.strokeRect(sx + 0.5, sy + 0.5, sw - 1, sh - 1);
   ctx.font = 'bold 13px monospace'; ctx.textAlign = 'center'; ctx.fillStyle = '#7df9ff';
   ctx.fillText('MATCH STATS', sx + sw / 2, sy + 22);
   const rows = [
-    ['CASTS',          ms.casts],
-    ['HITS',           ms.hits],
-    ['DAMAGE DEALT',   Math.round(ms.dmgDealt)],
-    ['DAMAGE TAKEN',   Math.round(ms.dmgTaken)],
-    ['MAX SCORE',      Math.round(ms.maxScore * 100) + '%'],
-    ['COMBOS',         ms.combosTriggered],
-    ['DIFFICULTY',     save.difficulty.toUpperCase()],
+    ['CASTS', ms.casts], ['HITS', ms.hits],
+    ['DAMAGE DEALT', Math.round(ms.dmgDealt)], ['DAMAGE TAKEN', Math.round(ms.dmgTaken)],
+    ['MAX SCORE', Math.round(ms.maxScore * 100) + '%'], ['COMBOS', ms.combosTriggered],
+    ['DIFFICULTY', save.difficulty.toUpperCase()],
   ];
   ctx.font = '13px monospace'; ctx.textAlign = 'left';
   let ry = sy + 50;
   for (const [k, v] of rows) {
     ctx.fillStyle = '#888'; ctx.fillText(k, sx + 30, ry);
     ctx.fillStyle = '#fff'; ctx.textAlign = 'right'; ctx.fillText(v, sx + sw - 30, ry);
-    ctx.textAlign = 'left';
-    ry += 24;
+    ctx.textAlign = 'left'; ry += 24;
   }
-  // Lifetime
   const ls = save.lifetime;
   ctx.font = '11px monospace'; ctx.textAlign = 'center'; ctx.fillStyle = '#888';
-  ctx.fillText(`LIFETIME · ${ls.wins}W · ${ls.losses}L · ${ls.draws}D · BEST ${Math.round(ls.bestScore * 100)}%`, 480, 490);
-  // Buttons
-  drawButton(280, 520, 180, 50, 'REMATCH', inRect({ x: pointerX, y: pointerY }, 280, 520, 180, 50), '#88ff88');
-  drawButton(500, 520, 180, 50, 'MENU', inRect({ x: pointerX, y: pointerY }, 500, 520, 180, 50), '#7df9ff');
+  ctx.fillText(`LIFETIME · ${ls.wins}W · ${ls.losses}L · ${ls.draws}D · BEST ${Math.round(ls.bestScore * 100)}%`, 480, 460);
+  drawButton(280, 580, 180, 44, 'REMATCH', inRect({ x: pointerX, y: pointerY }, 280, 580, 180, 44), '#88ff88');
+  drawButton(500, 580, 180, 44, 'MENU', inRect({ x: pointerX, y: pointerY }, 500, 580, 180, 44), '#7df9ff');
 }
+
+// ─── GACHA ───
+function drawGacha() {
+  drawCoinHUD(940, 28);
+  ctx.font = 'bold 36px monospace'; ctx.textAlign = 'center';
+  ctx.fillStyle = '#f5b700'; ctx.shadowColor = '#f5b700'; ctx.shadowBlur = 18;
+  ctx.fillText('GACHA', 480, 80); ctx.shadowBlur = 0;
+  ctx.font = '12px monospace'; ctx.fillStyle = '#888';
+  ctx.fillText('— L: 3% · R: 12% · C: 85% · 90-PULL PITY · DUPE → COIN REFUND —', 480, 105);
+  // Skin box (left)
+  drawGachaBox('skin', 60, 140, 380, 360);
+  // Glyph box (right)
+  drawGachaBox('glyph', 520, 140, 380, 360);
+  drawButton(60, 540, 180, 40, 'INVENTORY', inRect({ x: pointerX, y: pointerY }, 60, 540, 180, 40), '#aa66ff');
+  drawButton(270, 540, 180, 40, 'PROBABILITY', inRect({ x: pointerX, y: pointerY }, 270, 540, 180, 40), '#88ff88');
+  drawButton(480, 540, 180, 40, 'BACK', inRect({ x: pointerX, y: pointerY }, 480, 540, 180, 40), '#7df9ff');
+}
+function drawGachaBox(type, x, y, w, h) {
+  const isSkin = type === 'skin';
+  const totalPool = isSkin ? SKIN_POOL.length : GLYPH_GACHA_POOL.length;
+  const owned = isSkin ? save.inventory.skins.length : save.inventory.glyphs.filter(id => !G[id].starter).length;
+  const pity = save.pity[type];
+  const complete = poolComplete(type);
+  const accent = isSkin ? '#aa66ff' : '#7df9ff';
+  // Box
+  ctx.fillStyle = 'rgba(15,15,25,0.85)'; ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = accent; ctx.lineWidth = 2;
+  ctx.shadowColor = accent; ctx.shadowBlur = 12;
+  ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+  ctx.shadowBlur = 0;
+  // Title
+  ctx.font = 'bold 20px monospace'; ctx.textAlign = 'center';
+  ctx.fillStyle = accent; ctx.shadowColor = accent; ctx.shadowBlur = 8;
+  ctx.fillText(isSkin ? 'スキン ガチャ' : 'グリフ ガチャ', x + w / 2, y + 30);
+  ctx.shadowBlur = 0;
+  // Icon preview
+  ctx.save();
+  ctx.translate(x + w / 2, y + 90);
+  if (isSkin) {
+    // Mini mage silhouette
+    ctx.fillStyle = '#0a0a18';
+    ctx.beginPath();
+    ctx.moveTo(-22, 0); ctx.lineTo(-26, -50); ctx.lineTo(-18, -78);
+    ctx.lineTo(-8, -90); ctx.lineTo(8, -90); ctx.lineTo(18, -78);
+    ctx.lineTo(26, -50); ctx.lineTo(22, 0); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = accent; ctx.lineWidth = 2; ctx.shadowColor = accent; ctx.shadowBlur = 12;
+    ctx.stroke();
+  } else {
+    // Mini scattered glyphs
+    const sample = ['fireball', 'star', 'spiral', 'whirl'];
+    for (let i = 0; i < 4; i++) {
+      ctx.save();
+      ctx.translate(-60 + i * 40, 0);
+      ctx.strokeStyle = accent; ctx.lineWidth = 1.5; ctx.shadowColor = accent; ctx.shadowBlur = 6;
+      drawGlyphIcon(['zigzag', 'circle', 'triangle', 'star'][i], 14);
+      ctx.restore();
+    }
+  }
+  ctx.restore();
+  // Stats
+  ctx.font = 'bold 13px monospace'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff';
+  ctx.fillText(`OWNED  ${owned} / ${totalPool}`, x + w / 2, y + 170);
+  ctx.font = '11px monospace'; ctx.fillStyle = '#888';
+  ctx.fillText(`PITY  ${pity} / ${PITY_THRESHOLD}`, x + w / 2, y + 190);
+  // Pity bar
+  const pbx = x + 50, pby = y + 200, pbw = w - 100, pbh = 6;
+  ctx.fillStyle = '#222'; ctx.fillRect(pbx, pby, pbw, pbh);
+  ctx.fillStyle = '#f5b700';
+  ctx.fillRect(pbx, pby, pbw * (pity / PITY_THRESHOLD), pbh);
+  // Pull buttons
+  const canSingle = !complete && save.currency.coins >= PULL_COST_SINGLE;
+  const canTen = !complete && save.currency.coins >= PULL_COST_TEN;
+  if (complete) {
+    ctx.font = 'bold 16px monospace'; ctx.textAlign = 'center'; ctx.fillStyle = '#88ff88';
+    ctx.fillText('★ COMPLETE ★', x + w / 2, y + 250);
+  } else {
+    drawButton(x + 40, y + 240, 130, 38, 'SINGLE\n100◆', inRect({ x: pointerX, y: pointerY }, x + 40, y + 240, 130, 38), accent, !canSingle);
+    drawButton(x + 200, y + 240, 130, 38, '10-PULL\n900◆', inRect({ x: pointerX, y: pointerY }, x + 200, y + 240, 130, 38), accent, !canTen);
+  }
+  // Note
+  ctx.font = '9px monospace'; ctx.textAlign = 'center'; ctx.fillStyle = '#666';
+  ctx.fillText('10-PULL: -10% & last slot R+ guaranteed', x + w / 2, y + 300);
+  ctx.fillText('PITY ' + PITY_THRESHOLD + ': L guaranteed', x + w / 2, y + 318);
+}
+
+// ─── GACHA PULL ANIMATION ───
+function drawGachaPull() {
+  // Dark backdrop
+  ctx.fillStyle = 'rgba(0,0,0,0.85)'; ctx.fillRect(0, 0, 960, 640);
+  if (!pullState.active && !pullState.results.length) return;
+  const idx = Math.min(pullState.itemIdx, pullState.results.length - 1);
+  const result = pullState.results[idx]; if (!result) return;
+  const isL = result.rarity === 'L';
+  const rcol = RARITY_COLOR[result.rarity];
+  const isLast = idx === pullState.results.length - 1;
+  const fast = !isLast && !isL;
+  const PARTICLE_FR = fast ? 12 : (isL ? 36 : 24);
+  const ORB_FR = fast ? 18 : (isL ? 60 : 36);
+  const FLASH_FR = fast ? 8 : (isL ? 24 : 14);
+  const SETTLE_FR = fast ? 14 : (isL ? 60 : 36);
+  // Phase
+  if (pullState.itemPhase === 0) {
+    // Particles converging
+    const pr = pullState.itemFrame / PARTICLE_FR;
+    for (let i = 0; i < 20; i++) {
+      const a = (i / 20) * Math.PI * 2;
+      const r = (1 - pr) * 320;
+      const x = 480 + Math.cos(a) * r, y = 320 + Math.sin(a) * r;
+      ctx.fillStyle = rcol; ctx.shadowColor = rcol; ctx.shadowBlur = 12;
+      ctx.globalAlpha = 0.6;
+      ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+  } else if (pullState.itemPhase === 1) {
+    // Orb spinning
+    const op = pullState.itemFrame / ORB_FR;
+    const orbR = 50 + Math.sin(state.bgPulse * 12) * 6;
+    if (isL) {
+      // Hexagon hologram pattern
+      ctx.strokeStyle = rcol; ctx.lineWidth = 1; ctx.globalAlpha = 0.5;
+      for (let h = 0; h < 5; h++) {
+        const hr = 80 + h * 40 + Math.sin(state.bgPulse * 3 + h) * 8;
+        ctx.beginPath();
+        for (let i = 0; i <= 6; i++) {
+          const a = (i / 6) * Math.PI * 2 + state.bgPulse * 0.5;
+          const px = 480 + Math.cos(a) * hr, py = 320 + Math.sin(a) * hr;
+          if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
+    ctx.fillStyle = rcol; ctx.shadowColor = rcol; ctx.shadowBlur = isL ? 60 : 30;
+    ctx.globalAlpha = 0.85;
+    ctx.beginPath(); ctx.arc(480, 320, orbR, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.globalAlpha = 0.4;
+    ctx.beginPath(); ctx.arc(480, 320, orbR * 0.5, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+    if (isL) {
+      // L "warning" text
+      ctx.font = 'bold 18px monospace'; ctx.textAlign = 'center';
+      ctx.fillStyle = rcol; ctx.shadowColor = rcol; ctx.shadowBlur = 20;
+      const a = 0.5 + Math.sin(state.bgPulse * 12) * 0.5;
+      ctx.globalAlpha = a;
+      ctx.fillText('— LEGENDARY DETECTED —', 480, 240);
+      ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+    }
+  } else if (pullState.itemPhase === 2) {
+    // Flash
+    const fp = pullState.itemFrame / FLASH_FR;
+    ctx.fillStyle = `rgba(255,255,255,${0.8 * (1 - fp)})`;
+    ctx.fillRect(0, 0, 960, 640);
+  } else if (pullState.itemPhase === 3) {
+    // Settle / reveal
+    drawPullCard(result, 480, 280, 1.0);
+    if (isL) {
+      // L flash text
+      const a = Math.sin(state.bgPulse * 8) * 0.5 + 0.5;
+      ctx.font = 'bold 36px monospace'; ctx.textAlign = 'center';
+      ctx.fillStyle = '#f5b700'; ctx.shadowColor = '#f5b700'; ctx.shadowBlur = 30; ctx.globalAlpha = a;
+      ctx.fillText('LEGENDARY!', 480, 130);
+      ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+    }
+  }
+  // Progress indicator
+  ctx.font = '11px monospace'; ctx.textAlign = 'center'; ctx.fillStyle = '#888';
+  ctx.fillText(`${idx + 1} / ${pullState.results.length} · TAP / SPACE TO SKIP`, 480, 600);
+}
+function drawPullCard(result, cx, cy, scale) {
+  const w = 240 * scale, h = 280 * scale;
+  const x = cx - w / 2, y = cy - h / 2;
+  const rcol = RARITY_COLOR[result.rarity];
+  ctx.save();
+  ctx.fillStyle = 'rgba(15,15,25,0.95)'; ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = rcol; ctx.lineWidth = 3 * scale;
+  ctx.shadowColor = rcol; ctx.shadowBlur = 24 * scale;
+  ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+  ctx.shadowBlur = 0;
+  // Rarity tag
+  ctx.fillStyle = rcol; ctx.fillRect(x + 8 * scale, y + 8 * scale, 32 * scale, 22 * scale);
+  ctx.fillStyle = '#000'; ctx.font = `bold ${14 * scale}px monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(result.rarity, x + 24 * scale, y + 19 * scale); ctx.textBaseline = 'alphabetic';
+  // Icon area
+  ctx.save();
+  ctx.translate(cx, y + 110 * scale);
+  if (result.type === 'skin') {
+    const skinDef = SKIN_POOL.find(s => s.id === result.id);
+    const acc = skinDef ? skinDef.accent : rcol;
+    ctx.fillStyle = '#0a0a18';
+    ctx.beginPath();
+    ctx.moveTo(-22, 30); ctx.lineTo(-26, -20); ctx.lineTo(-18, -48);
+    ctx.lineTo(-8, -60); ctx.lineTo(8, -60); ctx.lineTo(18, -48);
+    ctx.lineTo(26, -20); ctx.lineTo(22, 30); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = acc; ctx.lineWidth = 2; ctx.shadowColor = acc; ctx.shadowBlur = 14; ctx.stroke();
+    ctx.shadowBlur = 0;
+  } else {
+    const g = G[result.id];
+    if (g) {
+      ctx.strokeStyle = g.color; ctx.lineWidth = 2.5; ctx.shadowColor = g.color; ctx.shadowBlur = 14;
+      drawGlyphIcon(g.shape, 36 * scale);
+      ctx.shadowBlur = 0;
+    }
+  }
+  ctx.restore();
+  // Name
+  ctx.font = `bold ${15 * scale}px monospace`; ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
+  ctx.fillText(result.name, cx, y + 200 * scale);
+  // Type / category
+  ctx.font = `${10 * scale}px monospace`; ctx.fillStyle = '#888';
+  if (result.type === 'glyph') {
+    const g = G[result.id];
+    if (g) ctx.fillText(CAT_LABEL_JA[g.cat] + ' · ' + g.en, cx, y + 220 * scale);
+  } else {
+    ctx.fillText('SKIN', cx, y + 220 * scale);
+  }
+  // Duplicate badge
+  if (result.isDup) {
+    ctx.fillStyle = '#888'; ctx.font = `bold ${11 * scale}px monospace`;
+    ctx.fillText('✓ DUPLICATE', cx, y + 246 * scale);
+    ctx.fillStyle = '#f5b700';
+    ctx.fillText('+' + result.refund + ' ◆', cx, y + 264 * scale);
+  } else {
+    ctx.fillStyle = '#88ff88'; ctx.font = `bold ${12 * scale}px monospace`;
+    ctx.fillText('★ NEW ★', cx, y + 256 * scale);
+  }
+  ctx.restore();
+}
+
+// ─── GACHA RESULT (summary) ───
+function drawGachaResult() {
+  drawCoinHUD(940, 28);
+  ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0, 0, 960, 640);
+  const results = pullState.results;
+  // Title
+  const newCount = results.filter(r => !r.isDup).length;
+  const totalRefund = results.filter(r => r.isDup).reduce((s, r) => s + r.refund, 0);
+  ctx.font = 'bold 24px monospace'; ctx.textAlign = 'center';
+  ctx.fillStyle = '#7df9ff'; ctx.shadowColor = '#7df9ff'; ctx.shadowBlur = 14;
+  ctx.fillText('GACHA RESULTS', 480, 50); ctx.shadowBlur = 0;
+  ctx.font = '13px monospace'; ctx.fillStyle = '#888';
+  ctx.fillText(`${results.length} PULLS · ${newCount} NEW · ${totalRefund} ◆ REFUNDED`, 480, 76);
+  // Grid (5x2 for 10, single centered for 1)
+  if (results.length === 1) {
+    drawPullCard(results[0], 480, 290, 1.0);
+  } else {
+    const cols = 5, cellW = 165, cellH = 200, startX = (960 - cols * cellW) / 2, startY = 110;
+    for (let i = 0; i < results.length; i++) {
+      const cx = startX + (i % cols) * cellW + cellW / 2;
+      const cy = startY + Math.floor(i / cols) * cellH + cellH / 2;
+      drawPullCard(results[i], cx, cy, 0.65);
+    }
+  }
+  // Buttons
+  drawButton(60, 580, 200, 40, 'GACHA', inRect({ x: pointerX, y: pointerY }, 60, 580, 200, 40), '#7df9ff');
+  const cost = pullState.count === 10 ? PULL_COST_TEN : PULL_COST_SINGLE;
+  const canPullAgain = !poolComplete(pullState.type) && save.currency.coins >= cost;
+  drawButton(290, 580, 200, 40, 'PULL AGAIN', inRect({ x: pointerX, y: pointerY }, 290, 580, 200, 40), '#88ff88', !canPullAgain);
+  drawButton(520, 580, 200, 40, 'INVENTORY', inRect({ x: pointerX, y: pointerY }, 520, 580, 200, 40), '#aa66ff');
+  drawButton(750, 580, 180, 40, 'MENU', inRect({ x: pointerX, y: pointerY }, 750, 580, 180, 40), '#888');
+}
+
+// ─── INVENTORY ───
+function drawInventory() {
+  drawCoinHUD(940, 28);
+  ctx.font = 'bold 22px monospace'; ctx.textAlign = 'center';
+  ctx.fillStyle = '#aa66ff'; ctx.shadowColor = '#aa66ff'; ctx.shadowBlur = 14;
+  ctx.fillText('INVENTORY', 480, 36); ctx.shadowBlur = 0;
+  // Tabs
+  drawButton(40, 580, 180, 40, 'SKINS · ' + save.inventory.skins.length + '/' + SKIN_POOL.length, inventoryTab === 'skins' || inRect({ x: pointerX, y: pointerY }, 40, 580, 180, 40), inventoryTab === 'skins' ? '#fff' : '#aa66ff');
+  drawButton(240, 580, 180, 40, 'GLYPHS · ' + save.inventory.glyphs.length + '/' + G_ORDER.length, inventoryTab === 'glyphs' || inRect({ x: pointerX, y: pointerY }, 240, 580, 180, 40), inventoryTab === 'glyphs' ? '#fff' : '#7df9ff');
+  drawButton(760, 580, 180, 40, 'BACK', inRect({ x: pointerX, y: pointerY }, 760, 580, 180, 40), '#888');
+  if (inventoryTab === 'skins') drawSkinInventory();
+  else drawGlyphInventory();
+}
+function drawSkinInventory() {
+  const cols = 5, cellW = 170, cellH = 200, startX = (960 - cols * cellW) / 2, startY = 70;
+  for (let i = 0; i < SKIN_POOL.length; i++) {
+    const sk = SKIN_POOL[i];
+    const cx = startX + (i % cols) * cellW, cy = startY + Math.floor(i / cols) * cellH;
+    const owned = save.inventory.skins.includes(sk.id);
+    const equipped = save.equippedSkin === sk.id;
+    const rcol = RARITY_COLOR[sk.rarity];
+    ctx.fillStyle = owned ? 'rgba(20,20,30,0.85)' : 'rgba(10,10,15,0.6)';
+    ctx.fillRect(cx + 4, cy + 4, cellW - 8, cellH - 8);
+    ctx.strokeStyle = equipped ? '#88ff88' : (owned ? rcol : '#333');
+    ctx.lineWidth = equipped ? 3 : 1.5;
+    ctx.shadowColor = equipped ? '#88ff88' : (owned ? rcol : 'transparent');
+    ctx.shadowBlur = equipped ? 14 : (owned ? 6 : 0);
+    ctx.strokeRect(cx + 4.5, cy + 4.5, cellW - 9, cellH - 9);
+    ctx.shadowBlur = 0;
+    // Rarity tag
+    ctx.fillStyle = rcol; ctx.fillRect(cx + 12, cy + 12, 26, 18);
+    ctx.fillStyle = '#000'; ctx.font = 'bold 11px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(sk.rarity, cx + 25, cy + 21); ctx.textBaseline = 'alphabetic';
+    if (!owned) {
+      ctx.font = 'bold 22px monospace'; ctx.fillStyle = '#444'; ctx.textAlign = 'center';
+      ctx.fillText('🔒', cx + cellW/2, cy + 100); continue;
+    }
+    if (equipped) {
+      ctx.fillStyle = '#88ff88'; ctx.font = 'bold 9px monospace'; ctx.textAlign = 'right';
+      ctx.fillText('★ EQUIPPED', cx + cellW - 12, cy + 22);
+    }
+    // Mage preview
+    ctx.save();
+    ctx.translate(cx + cellW / 2, cy + 110);
+    ctx.fillStyle = '#0a0a18';
+    ctx.beginPath();
+    ctx.moveTo(-22, 30); ctx.lineTo(-26, -20); ctx.lineTo(-18, -48);
+    ctx.lineTo(-8, -60); ctx.lineTo(8, -60); ctx.lineTo(18, -48);
+    ctx.lineTo(26, -20); ctx.lineTo(22, 30); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = sk.accent; ctx.lineWidth = 2;
+    ctx.shadowColor = sk.accent; ctx.shadowBlur = 12; ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.restore();
+    // Name
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 11px monospace'; ctx.textAlign = 'center';
+    ctx.fillText(sk.name, cx + cellW / 2, cy + 178);
+    ctx.fillStyle = '#666'; ctx.font = '8px monospace';
+    ctx.fillText(sk.flair, cx + cellW / 2, cy + 192);
+  }
+}
+function drawGlyphInventory() {
+  const cols = 6, cellW = 145, cellH = 92, startX = (960 - cols * cellW) / 2, startY = 70;
+  for (let i = 0; i < G_ORDER.length; i++) {
+    const id = G_ORDER[i], g = G[id];
+    const cx = startX + (i % cols) * cellW, cy = startY + Math.floor(i / cols) * cellH;
+    const owned = save.inventory.glyphs.includes(id);
+    const rcol = RARITY_COLOR[g.rarity];
+    ctx.fillStyle = owned ? 'rgba(20,20,30,0.85)' : 'rgba(10,10,15,0.6)';
+    ctx.fillRect(cx + 2, cy + 2, cellW - 4, cellH - 4);
+    ctx.strokeStyle = owned ? rcol : '#333'; ctx.lineWidth = 1.5;
+    ctx.strokeRect(cx + 2.5, cy + 2.5, cellW - 5, cellH - 5);
+    if (!owned) { ctx.font = 'bold 22px monospace'; ctx.fillStyle = '#444'; ctx.textAlign = 'center'; ctx.fillText('🔒', cx + cellW/2, cy + 50); continue; }
+    // Rarity badge
+    ctx.fillStyle = rcol; ctx.fillRect(cx + 8, cy + 8, 22, 16);
+    ctx.fillStyle = '#000'; ctx.font = 'bold 11px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(g.rarity, cx + 19, cy + 16); ctx.textBaseline = 'alphabetic';
+    ctx.save(); ctx.translate(cx + cellW - 24, cy + 26);
+    ctx.strokeStyle = g.color; ctx.lineWidth = 1.6; ctx.shadowColor = g.color; ctx.shadowBlur = 6;
+    drawGlyphIcon(g.shape, 14);
+    ctx.restore();
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 12px monospace';
+    ctx.fillText(g.ja, cx + 8, cy + 44);
+    ctx.fillStyle = CAT_COLOR[g.cat]; ctx.font = '8px monospace';
+    ctx.fillText(CAT_LABEL_JA[g.cat] + ' · ' + g.syn.toUpperCase(), cx + 8, cy + 58);
+    ctx.fillStyle = '#888'; ctx.font = '8px monospace';
+    const desc = g.desc.length > 30 ? g.desc.slice(0, 30) + '…' : g.desc;
+    ctx.fillText(desc, cx + 8, cy + 72);
+  }
+}
+
+// ─── PROBABILITY ───
+function drawProbability() {
+  drawCoinHUD(940, 28);
+  ctx.font = 'bold 22px monospace'; ctx.textAlign = 'center';
+  ctx.fillStyle = '#88ff88'; ctx.shadowColor = '#88ff88'; ctx.shadowBlur = 12;
+  ctx.fillText('PROBABILITY', 480, 36); ctx.shadowBlur = 0;
+  ctx.font = '11px monospace'; ctx.fillStyle = '#888';
+  ctx.fillText('LEGAL DISCLOSURE — RATES PER PULL', 480, 56);
+  // Rates summary
+  ctx.font = 'bold 14px monospace'; ctx.textAlign = 'left';
+  let py = 100;
+  for (const r of ['L', 'R', 'C']) {
+    ctx.fillStyle = RARITY_COLOR[r];
+    ctx.fillText(r, 240, py);
+    ctx.fillStyle = '#fff';
+    ctx.fillText((RARITY_RATES[r] * 100).toFixed(1) + '%', 280, py);
+    ctx.fillStyle = '#888';
+    ctx.fillText(`(refund ${REFUND_BY_RARITY[r]} ◆)`, 380, py);
+    py += 22;
+  }
+  // Skin breakdown
+  ctx.font = 'bold 13px monospace'; ctx.fillStyle = '#aa66ff';
+  ctx.fillText('SKIN POOL', 80, 200);
+  let px = 80, sy = 220;
+  for (const r of ['L', 'R', 'C']) {
+    const items = SKIN_POOL.filter(s => s.rarity === r);
+    if (items.length === 0) continue;
+    const perItem = (RARITY_RATES[r] * 100) / items.length;
+    ctx.fillStyle = RARITY_COLOR[r]; ctx.font = 'bold 11px monospace';
+    ctx.fillText(r + ' · ' + items.length + ' items · ' + perItem.toFixed(2) + '% each', px, sy); sy += 16;
+    ctx.fillStyle = '#aaa'; ctx.font = '10px monospace';
+    for (const s of items) { ctx.fillText('  ' + s.name, px, sy); sy += 13; }
+    sy += 6;
+  }
+  // Glyph breakdown
+  ctx.font = 'bold 13px monospace'; ctx.fillStyle = '#7df9ff';
+  ctx.fillText('GLYPH POOL', 520, 200);
+  let gx = 520, gy = 220;
+  for (const r of ['L', 'R', 'C']) {
+    const items = GLYPH_GACHA_POOL.filter(s => s.rarity === r);
+    if (items.length === 0) continue;
+    const perItem = (RARITY_RATES[r] * 100) / items.length;
+    ctx.fillStyle = RARITY_COLOR[r]; ctx.font = 'bold 11px monospace';
+    ctx.fillText(r + ' · ' + items.length + ' items · ' + perItem.toFixed(2) + '% each', gx, gy); gy += 16;
+    ctx.fillStyle = '#aaa'; ctx.font = '10px monospace';
+    for (const s of items) { ctx.fillText('  ' + s.name, gx, gy); gy += 13; }
+    gy += 6;
+  }
+  drawButton(380, 580, 200, 40, 'BACK', inRect({ x: pointerX, y: pointerY }, 380, 580, 200, 40), '#888');
+}
+
+// ═══════════════════════════════════════════════════════════
+// DEV CONSOLE HOOKS (Phase 1C §10)
+// ═══════════════════════════════════════════════════════════
+window.gacha = {
+  giveCoins: (n) => { save.currency.coins += (n || 1000); persistSave(); console.log('coins:', save.currency.coins); },
+  resetInventory: () => { save.inventory.skins = [STARTER_SKIN]; save.inventory.glyphs = STARTER_GLYPHS.slice(); save.equippedSkin = STARTER_SKIN; save.pity = { skin: 0, glyph: 0 }; persistSave(); console.log('inventory reset'); },
+  resetPity: (type) => { if (!type || type === 'skin') save.pity.skin = 0; if (!type || type === 'glyph') save.pity.glyph = 0; persistSave(); console.log('pity reset:', save.pity); },
+  forceL: (type) => { save.pity[type || 'glyph'] = PITY_THRESHOLD - 1; persistSave(); console.log('next pull = L'); },
+  pull: (type, count) => { return pullGacha(type || 'glyph', count || 1); },
+  showAll: () => { console.table(save.inventory); console.table({ coins: save.currency.coins, pity: save.pity, gachaStats: save.gachaStats }); },
+  simulate: (type, n) => {
+    const counts = { C: 0, R: 0, L: 0 };
+    const oldPity = save.pity[type], oldCoins = save.currency.coins, oldInv = save.inventory[type === 'skin' ? 'skins' : 'glyphs'].slice(), oldStats = JSON.parse(JSON.stringify(save.gachaStats));
+    for (let i = 0; i < n; i++) {
+      const out = pullGacha(type, 1);
+      if (out.results) for (const r of out.results) counts[r.rarity]++;
+      save.currency.coins = oldCoins; // unlimited budget
+    }
+    // Rollback inventory + pity
+    save.pity[type] = oldPity;
+    save.inventory[type === 'skin' ? 'skins' : 'glyphs'] = oldInv;
+    save.gachaStats = oldStats;
+    persistSave();
+    console.log(`${n} pulls — C: ${counts.C} (${(counts.C/n*100).toFixed(2)}%) R: ${counts.R} (${(counts.R/n*100).toFixed(2)}%) L: ${counts.L} (${(counts.L/n*100).toFixed(2)}%)`);
+    return counts;
+  },
+};
 
 // ═══════════════════════════════════════════════════════════
 // MAIN LOOP
